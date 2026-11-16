@@ -5,7 +5,7 @@ Two setup steps that have to happen before Terraform can do anything:
 1. **`main.bicep`**: the Azure Storage account the root module keeps its state in.
 2. **`github-oidc.bash`**: the Entra ID identity GitHub Actions authenticates as.
 
-Both are one-time and idempotent. Neither has been run: the `schmeide` subscription does not exist yet.
+Both are one-time and idempotent. Both have been run for the `schmeide` subscription.
 
 Every name is a parameter. `main.bicep` takes the location, resource group, storage account, container and SKU as
 parameters with defaults; `main.bicepparam` sets the rest. `github-oidc.bash` takes `--subscription`, `--repo`,

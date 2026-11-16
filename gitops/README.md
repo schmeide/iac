@@ -6,7 +6,7 @@ per chart, so the directory sync does not apply them as manifests.
 
 `schmeide/iac` is public, so Argo clones it with no repository credential.
 
-Reach the Argo CD UI with `kubectl -n argocd port-forward svc/argo-cd-server 8080:443`. The admin password is
+Reach the Argo CD UI with `kubectl -n argocd port-forward svc/argo-cd-argocd-server 8080:443`. The admin password is
 in the `argocd-initial-admin-secret` Secret. There is no public hostname, because no domain is chosen.
 
 ## What Argo installs
