@@ -1,0 +1,103 @@
+# One-off: tear down the schmeide stack in eastus so it can be recreated in centralus (#8).
+# eastus cannot host the Postgres server (#3), and every resource is location-bound, so the
+# stack moves whole. Delete this file once the move has applied.
+#
+# Why not `make destroy`: the cluster, vault, registry, storage and secrets carry
+# prevent_destroy, which also blocks a destroy. Deleting the resource groups and letting the
+# next plan's refresh drop the vanished objects from state needs no change to those guards.
+#
+# Runs as the CI identity because nobody else can reach the cluster (#4). Manual only, and
+# the confirm input has to be typed out.
+name: Teardown eastus
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type "delete schmeide eastus" to delete this stack's resource groups in eastus
+        required: true
+defaults:
+  run:
+    shell: bash
+permissions:
+  contents: read
+concurrency:
+  # The same group as apply.yml, so a teardown and an apply never overlap.
+  group: ${{ github.repository }}-Apply
+  cancel-in-progress: false
+env:
+  TERRAFORM_VERSION: "1.16.0"
+  # This stack's resource groups, cluster first: it holds the node subnet, and deleting it
+  # also deletes the AKS-managed schmeide-cluster-nodes group. schmeide-tfstate is not here
+  # and must never be.
+  RESOURCE_GROUPS: schmeide-cluster schmeide-registry schmeide-frontends schmeide-postgres schmeide-network
+  OLD_LOCATION: eastus
+  KEY_VAULT: kv-schmeide
+jobs:
+  teardown:
+    if: vars.AZURE_ENABLED == 'true' && inputs.confirm == 'delete schmeide eastus'
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Login to Azure
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      # Names, types and locations only. This repo is public, and so are its run logs.
+      - name: Check and list what will be deleted
+        run: |
+          [[ "$(az account show --query name -o tsv)" == schmeide ]] || { echo "not the schmeide subscription" >&2; exit 1; }
+          for rg in $RESOURCE_GROUPS; do
+            location=$(az group show -n "$rg" --query location -o tsv 2>/dev/null || true)
+            if [[ -z "$location" ]]; then
+              echo "$rg: already gone"
+              continue
+            fi
+            [[ "$location" == "$OLD_LOCATION" ]] || { echo "$rg is in $location, not $OLD_LOCATION; stopping" >&2; exit 1; }
+            echo "== $rg"
+            az resource list -g "$rg" --query "[].[name,type,location]" -o tsv
+          done
+
+      # The releases live inside the cluster and go with it. Left in state, the next plan
+      # would try to refresh them against a cluster that no longer exists.
+      - name: Remove the Helm releases from state
+        run: |
+          make init
+          for r in helm_release.argocd_bootstrap helm_release.argo_cd helm_release.external_secrets; do
+            if terraform -chdir=azure/schmeide state list | grep -qx "$r"; then
+              terraform -chdir=azure/schmeide state rm "$r"
+            fi
+          done
+
+      - name: Delete the resource groups
+        run: |
+          for rg in $RESOURCE_GROUPS; do
+            if az group exists -n "$rg" | grep -q true; then
+              echo "deleting $rg"
+              az group delete -n "$rg" --yes
+            fi
+          done
+
+      # Deleting the group soft-deletes the vault, which keeps its name reserved. The new
+      # vault in centralus reuses the name, so purge it. Purge protection is off.
+      - name: Purge the soft-deleted Key Vault
+        run: |
+          if az keyvault list-deleted --resource-type vault --query "[?name=='$KEY_VAULT'] | length(@)" -o tsv | grep -qx 1; then
+            az keyvault purge --name "$KEY_VAULT" --location "$OLD_LOCATION"
+          fi
+          echo "remaining state:"
+          terraform -chdir=azure/schmeide state list
