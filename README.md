@@ -145,10 +145,10 @@ skipped because the `AZURE_ENABLED` repository variable is not `true`.
    | `psql-schmeide` | `azure/schmeide/postgres.tf`, `gitops/schmeide/temporal/values.yaml`, `forgejo/values.yaml` |
    | `stschmeidefrontends` | `azure/schmeide/frontends.tf` |
 
-4. **Check quota and versions in the region** (`eastus` by default). The cluster needs about 12 vCPUs at its default
+4. **Check quota and versions in the region** (`centralus` by default). The cluster needs about 12 vCPUs at its default
    ceiling: one `Standard_D2s_v6` system node, room to rotate it, and up to two `Standard_D4as_v6` user nodes. A new
-   subscription's per-family quota may be lower. `az vm list-usage -l eastus -o table` shows it, and
-   `az aks get-versions -l eastus -o table` shows whether Kubernetes `1.36` is offered.
+   subscription's per-family quota may be lower. `az vm list-usage -l centralus -o table` shows it, and
+   `az aks get-versions -l centralus -o table` shows whether Kubernetes `1.36` is offered.
 5. **Fill in `principalId`** in `bootstrap/main.bicepparam` with your own object ID
    (`az ad signed-in-user show --query id -o tsv`).
 6. **Create the state backend:** `make bootstrap/whatif`, then `make bootstrap`. Then register the resource

@@ -23,7 +23,7 @@ Argo CD and External Secrets are installed from the root module, `azure/schmeide
 
 At the defaults the cluster can use 12 vCPUs: 2 for the system node, 2 for its temporary copy during a rotation, and
 8 for two user nodes. A new subscription's per-family vCPU quota may be lower than that. Check with
-`az vm list-usage -l eastus -o table` and request more before raising `user_max_count`. Azure rejects a whole
+`az vm list-usage -l centralus -o table` and request more before raising `user_max_count`. Azure rejects a whole
 scale-up that would pass the quota, so a pool stuck below its maximum is the symptom.
 
 ## Before the first apply

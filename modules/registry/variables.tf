@@ -11,7 +11,7 @@ variable "resource_group_name" {
 variable "location" {
   description = "Azure region for the registry. Same as the cluster, so pulls stay in region."
   type        = string
-  default     = "eastus"
+  default     = "centralus"
 }
 
 variable "sku" {
