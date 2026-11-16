@@ -1,0 +1,35 @@
+{
+    "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+    "extends": ["config:recommended", "schedule:daily"],
+    "enabledManagers": ["github-actions", "terraform", "npm", "argocd"],
+    "argocd": {
+        "managerFilePatterns": ["/^gitops/.+/apps/.+\\.yaml$/"]
+    },
+    "packageRules": [
+        {
+            "matchManagers": ["github-actions"],
+            "groupName": "github-actions",
+            "commitMessagePrefix": "chore(deps/github-actions):"
+        },
+        {
+            "matchManagers": ["terraform"],
+            "groupName": "terraform",
+            "commitMessagePrefix": "chore(deps/terraform):"
+        },
+        {
+            "matchManagers": ["npm"],
+            "groupName": "npm",
+            "commitMessagePrefix": "chore(deps/npm):"
+        },
+        {
+            "matchManagers": ["argocd"],
+            "groupName": "argocd",
+            "commitMessagePrefix": "chore(deps/argocd):"
+        },
+        {
+            "description": "Give each major update its own pull request.",
+            "matchUpdateTypes": ["major"],
+            "groupName": null
+        }
+    ]
+}

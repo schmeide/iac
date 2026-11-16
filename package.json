@@ -1,0 +1,12 @@
+{
+  "name": "iac",
+  "private": true,
+  "description": "Node tooling for the schmeide infrastructure repo. Markdown linting only. There is no application code here.",
+  "scripts": {
+    "check:markdown": "markdownlint-cli2 \"**/*.md\" \"!node_modules\" \"!.claude\"",
+    "fix:markdown": "markdownlint-cli2 --fix \"**/*.md\" \"!node_modules\" \"!.claude\""
+  },
+  "devDependencies": {
+    "markdownlint-cli2": "0.24.1"
+  }
+}

@@ -1,0 +1,184 @@
+# Terraform plan against real Azure state.
+#
+# Two triggers in one file on purpose. `pull_request` is how a reviewer sees what a change
+# would do; `workflow_call` makes this reusable, so apply.yml runs the exact same plan job
+# as its first step rather than duplicating the steps and drifting from them.
+#
+# Authentication is OIDC -- azure/login exchanges a short-lived GitHub token for an Azure
+# one, so there is no client secret anywhere. AZURE_CLIENT_ID, AZURE_TENANT_ID and
+# AZURE_SUBSCRIPTION_ID are repository *variables*, not secrets: none of the three is
+# sensitive, and with OIDC there is no credential to hide. bootstrap/github-oidc.bash
+# creates the app registration and prints the commands that set them.
+#
+# INERT UNTIL THE SUBSCRIPTION EXISTS. Every job here is gated on the AZURE_ENABLED
+# repository variable, so with it unset the run shows the job as skipped rather than
+# failing on a login to a subscription that does not exist. README.md, "Bringing the
+# subscription online", has the steps that end with setting it to true.
+name: Plan
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_call:
+defaults:
+  run:
+    shell: bash
+permissions:
+  # id-token: write is what lets the job mint the OIDC token azure/login exchanges.
+  id-token: write
+  contents: read
+  # For the plan comment. Every caller must grant this too, including apply.yml on the
+  # workflow_call path where the comment step never runs -- a called workflow cannot
+  # request more than its caller grants, and that is enforced at load time rather than
+  # when the gated step would have run.
+  pull-requests: write
+concurrency:
+  group: ${{ github.repository }}-${{ github.workflow }}-${{ github.ref }}
+  # A superseded plan is worth nothing, so canceling one costs nothing. Contrast apply.yml.
+  cancel-in-progress: true
+env:
+  TERRAFORM_VERSION: "1.16.0"
+jobs:
+  plan:
+    if: vars.AZURE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Login to Azure
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          # The wrapper rewrites terraform's exit codes. `make plan` treats exit 2 as
+          # "changes present" and keeps the planfile; the wrapper breaks that.
+          terraform_wrapper: false
+
+      # The Helm provider auths with kubelogin. local_account_disabled means there is no
+      # admin client certificate to use instead. az aks install-cli is idempotent and does
+      # not need a secret. The apply job is a different runner, so it installs kubelogin
+      # itself. Calling this workflow does not put the binary on that machine.
+      - name: Install kubelogin
+        run: az aks install-cli
+
+      - name: Init
+        run: |
+          make init
+
+      # `make plan` passes -lock=false deliberately: a plan is read-only and has no business
+      # holding the blob lease an apply needs. What serializes CI is the concurrency group
+      # above, not the state lock.
+      - name: Plan
+        run: |
+          make plan
+
+      # Rendered once, into a file, because two things consume it: the job summary and the
+      # PR comment. Running `make plan/show` twice would be two chances to disagree.
+      - name: Render plan
+        run: |
+          make plan/show > plan.txt
+          echo "PLAN_LINES=$(wc -l < plan.txt)" >> "$GITHUB_ENV"
+
+      # A planfile is opaque to a human reviewer. The job summary is the reviewable half.
+      - name: Write plan to job summary
+        run: |
+          {
+            echo "<details><summary>Terraform plan for \`${{ github.sha }}\`</summary>"
+            echo
+            echo '```terraform'
+            cat plan.txt
+            echo '```'
+            echo
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # The job summary is only visible to someone who clicks into the run. The comment
+      # brings the plan to where review actually happens.
+      #
+      # One sticky comment, found by the marker below and edited in place, rather than a new
+      # one per push -- a long-lived PR would otherwise accumulate a stack of stale plans
+      # with the current one buried at the bottom.
+      #
+      # github-script rather than a third-party commenting action: it is first-party, and
+      # this needs real logic (find-or-create, size fallback) that a declarative action
+      # would not give.
+      - name: Comment plan on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require('fs');
+
+            // A GitHub issue comment body is capped at 65536 characters. The budget below
+            // is what is left for the plan text once the wrapper -- heading, fences,
+            // details element, marker -- is accounted for, with room to spare. Exceeding
+            // the cap fails the API call outright, so this must not be tight.
+            const BODY_LIMIT = 60000;
+            const MARKER = '<!-- terraform-plan -->';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            const plan = fs.readFileSync('plan.txt', 'utf8');
+
+            // The one line a reviewer looks for first, and the one line that must survive
+            // even when the plan itself does not fit.
+            const summaryLine =
+              plan.split('\n').reverse().find(l => /^(Plan:|No changes\.|Error:)/.test(l.trim()))
+              ?? 'Plan summary not found -- see the full output.';
+
+            const body = plan.length <= BODY_LIMIT
+              ? [
+                  MARKER,
+                  `### Terraform plan \`${context.sha.slice(0, 7)}\``,
+                  '',
+                  `**${summaryLine.trim()}**`,
+                  '',
+                  '<details><summary>Full plan</summary>',
+                  '',
+                  '```terraform',
+                  plan,
+                  '```',
+                  '',
+                  '</details>',
+                ].join('\n')
+              : [
+                  MARKER,
+                  `### Terraform plan \`${context.sha.slice(0, 7)}\``,
+                  '',
+                  `**${summaryLine.trim()}**`,
+                  '',
+                  `The full plan is ${plan.length.toLocaleString()} characters, past the ` +
+                  `${BODY_LIMIT.toLocaleString()}-character limit for a comment, so it is not inlined here.`,
+                  '',
+                  `- **[Job summary and logs for this run](${runUrl})** -- the complete plan is rendered there, no download needed.`,
+                  `- The \`planfile-${context.sha}\` artifact on that page is the binary planfile the apply consumes.`,
+                ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              ...context.repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            });
+            const existing = comments.find(c => c.body.includes(MARKER));
+
+            if (existing) {
+              await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });
+            }
+
+      # Named with the commit SHA so apply.yml can prove it is applying the plan for the
+      # commit it is actually running on, rather than whatever plan happened to be latest.
+      - name: Upload planfile
+        uses: actions/upload-artifact@v7
+        with:
+          name: planfile-${{ github.sha }}
+          path: azure/schmeide/planfile.tfplan
+          retention-days: 5
+          if-no-files-found: error

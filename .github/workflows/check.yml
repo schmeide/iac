@@ -1,0 +1,92 @@
+# Formatting, linting, Markdown and validation. Deliberately needs NO Azure credentials: every step
+# here reads files and provider schemas and nothing else. `make check/validate` inits with
+# -backend=false, so it contacts no storage account and assumes no identity -- which means
+# this workflow still gives a real signal on a fork PR, or before `make bootstrap` has ever
+# been run.
+#
+# Anything that needs to reach Azure lives in plan.yml.
+name: Check
+on:
+  pull_request:
+    branches:
+      - main
+  # Also on push to main. A PR is the intended route onto main, but it is not the only one
+  # -- a direct push, an admin merge, or the very first commit to an empty repository all
+  # reach main without a PR ever running. Since apply.yml fires on exactly those pushes,
+  # PR-only checks would let an apply run against code nothing had linted.
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+defaults:
+  run:
+    shell: bash
+permissions:
+  contents: read
+env:
+  # Must satisfy the required_version constraint in azure/<subscription>/backend.tf.
+  TERRAFORM_VERSION: "1.16.0"
+jobs:
+  check-terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          # The wrapper rewrites terraform's exit codes, which breaks the Makefile's
+          # deliberate handling of `plan` exit 2. Off everywhere, for consistency.
+          terraform_wrapper: false
+
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v6
+
+      - name: Check formatting
+        run: |
+          make check/format
+
+      - name: Lint
+        run: |
+          make check/lint
+
+      - name: Validate
+        run: |
+          make check/validate
+
+  check-markdown:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      # `npm ci` installs exactly package-lock.json, so CI lints with the same
+      # markdownlint version as a developer's desk. `npm install` would be free to resolve
+      # something newer and turn a rule change into a mystery CI failure on an unrelated PR.
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install
+        run: |
+          npm ci
+
+      - name: Lint Markdown
+        run: |
+          make check/markdown
+
+  check-bicep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      # The Azure CLI is preinstalled on ubuntu-latest, and `az bicep build` compiles
+      # locally -- no login, no subscription, no network calls to ARM.
+      - name: Check bootstrap template compiles
+        run: |
+          make check/bicep
