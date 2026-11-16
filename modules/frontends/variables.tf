@@ -11,7 +11,7 @@ variable "resource_group_name" {
 variable "location" {
   description = "Azure region for the account."
   type        = string
-  default     = "eastus"
+  default     = "centralus"
 }
 
 variable "tags" {

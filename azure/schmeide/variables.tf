@@ -27,7 +27,7 @@ variable "tenant_id" {
 variable "location" {
   description = "Default Azure region for resources in this subscription."
   type        = string
-  default     = "eastus"
+  default     = "centralus"
 }
 
 variable "tags" {

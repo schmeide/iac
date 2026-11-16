@@ -11,7 +11,7 @@ variable "resource_group_name" {
 variable "location" {
   description = "Azure region for the server. Must match the VNet the delegated subnet is in."
   type        = string
-  default     = "eastus"
+  default     = "centralus"
 }
 
 variable "postgres_version" {

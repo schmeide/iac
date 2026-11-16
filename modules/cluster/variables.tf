@@ -11,7 +11,7 @@ variable "resource_group_name" {
 variable "location" {
   description = "Azure region for every resource this module creates."
   type        = string
-  default     = "eastus"
+  default     = "centralus"
 }
 
 variable "kubernetes_version" {
