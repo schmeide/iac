@@ -5,32 +5,32 @@ follow [autobutler-org/iac](https://github.com/autobutler-org/iac).
 
 `AGENTS.md` is the rules and commands. This file is the reasoning.
 
-**Status: applied except Postgres.** The `schmeide` subscription is live and the workflows are on. Everything but the
-PostgreSQL server exists; "Current state" below has the details and what is blocked.
+**Status: applied.** The `schmeide` subscription is live and the workflows are on. "Current state" below has what
+exists and what is still open.
 
 ## Current state
 
-As of 2026-11-16, 32 of the 38 planned resources exist in `eastus`:
+As of 2026-11-16, every planned resource exists in `centralus`. The stack moved there from `eastus`, where the
+subscription may not create PostgreSQL flexible servers ([#3](https://github.com/schmeide/iac/issues/3),
+[#8](https://github.com/schmeide/iac/issues/8)). The state account `stschmeidetfstate` stays in `eastus`.
 
 - Network: `schmeide-vnet`, the `nodes` and delegated `postgres` subnets, the Postgres private DNS zone and its link.
 - AKS `schmeide`, Kubernetes 1.36, one `Standard_D2s_v6` system node and a `Standard_D4as_v6` user pool (1-2 nodes).
+- PostgreSQL 17 `psql-schmeide` (`B_Standard_B2s`), with the `schmeide`, `temporal`, `temporal_visibility` and
+  `forgejo` databases. Its FQDN matches the one in `gitops/`.
 - Key Vault `kv-schmeide` with `postgres-admin-password` and `forgejo-admin-password`.
 - Container registry `schmeide` (Basic), storage account `stschmeidefrontends` with the `bundles` container.
 - The identities and role assignments the modules declare.
 - Helm releases `external-secrets`, `argo-cd` and `argocd-bootstrap`. Argo has synced Traefik: its LoadBalancer
   Service has a public IP that answers 404, as Traefik with no routes does.
 
-Blocked:
+Open:
 
-- **PostgreSQL** ([#3](https://github.com/schmeide/iac/issues/3)). The subscription may not create flexible servers in
-  `eastus`, so every Apply ends red on `psql-schmeide`, and Temporal and Forgejo cannot start. Fix: a support request
-  for region access, then re-run Apply. The FQDN placeholders in `gitops/` stay right as long as the name
-  `psql-schmeide` is kept.
 - **Kubernetes access for people** ([#4](https://github.com/schmeide/iac/issues/4)). Only the CI identity holds an
   `Azure Kubernetes Service RBAC *` role, and subscription Owner does not imply one. So cert-manager, the
-  ExternalSecrets, and the Applications' sync status are unverified.
-- **vCPU quota** ([#5](https://github.com/schmeide/iac/issues/5)). The regional limit is 10 and the cluster uses 6,
-  which leaves no room for a second user node and an upgrade surge at once.
+  ExternalSecrets, Temporal, Forgejo and the Applications' sync status are unverified.
+- **vCPU quota** ([#5](https://github.com/schmeide/iac/issues/5)). The regional limit in `centralus` is 10 and the
+  cluster uses 6, which leaves no room for a second user node and an upgrade surge at once.
 
 ### Reaching the cluster
 

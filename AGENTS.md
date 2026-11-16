@@ -15,7 +15,7 @@ the CI identity. `gitops/README.md` covers what Argo CD installs and every place
 
 ## The subscription is live
 
-Everything but the Postgres server has been applied; `README.md`, "Current state", has what runs and what is blocked.
+Everything is applied, in `centralus`; `README.md`, "Current state", has what runs and what is still open.
 Do not run `make apply-*`, `make bootstrap` or any `az` command that changes Azure unless the user asks for it in that
 message. Changes reach Azure through a merge to `main`. `make check` needs no Azure access and is always safe.
 
