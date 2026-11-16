@@ -1,0 +1,9 @@
+# Copy to terraform.tfvars (gitignored) only to run terraform without `make`. `make` and CI
+# set these from the subscription name and need no file. Bare terraform also needs
+# ARM_SUBSCRIPTION_ID and ARM_TENANT_ID exported for the backend; see backend.tf.
+#
+# PLACEHOLDER values. Replace both once the schmeide subscription exists:
+#   az account show --subscription schmeide --query id -o tsv
+#   az account show --subscription schmeide --query tenantId -o tsv
+subscription_id = "00000000-0000-0000-0000-000000000000"
+tenant_id       = "00000000-0000-0000-0000-000000000000"

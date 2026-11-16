@@ -1,0 +1,22 @@
+# The root Application: everything under gitops/schmeide/apps on main. Each file there is
+# a manifest or a child Application. See gitops/README.md.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: schmeide
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/schmeide/iac.git
+    targetRevision: main
+    path: gitops/schmeide/apps
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
