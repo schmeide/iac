@@ -1,0 +1,53 @@
+# Values for Temporal, https://go.temporal.io/helm-charts.
+# https://github.com/temporalio/helm-charts/blob/temporal-1.8.0/charts/temporal/values.yaml
+#
+# Both stores are on the shared Postgres server. The databases exist already (terraform,
+# azure/schmeide/postgres.tf), so createDatabase is off and the chart's schema job only
+# creates and migrates tables. The visibility schema needs the btree_gin extension, which
+# terraform allow-lists on the server.
+
+server:
+  config:
+    persistence:
+      defaultStore: default
+      visibilityStore: visibility
+      # Cannot be changed after the first deployment. 512 is the chart default and is
+      # plenty for one cluster's worth of tenants.
+      numHistoryShards: 512
+      datastores:
+        default:
+          sql: &sql
+            pluginName: postgres12
+            databaseName: temporal
+            # PLACEHOLDER: the Postgres FQDN. This is the name azure/schmeide/postgres.tf
+            # asks for (psql-schmeide). Confirm against `make output` (postgres_fqdn) after
+            # the first apply, and change all three together if the name was taken.
+            connectAddr: psql-schmeide.postgres.database.azure.com:5432
+            connectProtocol: tcp
+            # PLACEHOLDER: the admin login, until a dedicated one exists. See
+            # apps/temporal-secrets.yaml.
+            user: schmeideadmin
+            existingSecret: temporal-db
+            secretKey: password
+            createDatabase: false
+            manageSchema: true
+            # Four services, two stores each: 80 connections at most. The B2s default
+            # allows a few hundred.
+            maxConns: 10
+            maxIdleConns: 5
+            maxConnLifetime: 1h
+            # Azure Database for PostgreSQL requires TLS. Its certificate chains to a
+            # public root, so the image's CA bundle verifies it.
+            tls:
+              enabled: true
+              enableHostVerification: true
+              serverName: psql-schmeide.postgres.database.azure.com
+        visibility:
+          sql:
+            <<: *sql
+            databaseName: temporal_visibility
+
+# The Web UI stays inside the cluster until a hostname is chosen:
+#   kubectl -n temporal port-forward svc/temporal-web 8080:8080
+web:
+  enabled: true

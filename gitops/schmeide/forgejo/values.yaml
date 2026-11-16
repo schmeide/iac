@@ -1,0 +1,57 @@
+# Values for Forgejo, oci://code.forgejo.org/forgejo-helm/forgejo.
+# https://code.forgejo.org/forgejo-helm/forgejo-helm/src/tag/v17.3.2/values.yaml
+#
+# One replica: the chart says it is not HA-ready (decisions/code-hosting-forgejo.md).
+
+gitea:
+  admin:
+    # From apps/forgejo-secrets.yaml: keys username and password.
+    existingSecret: forgejo-admin
+    # PLACEHOLDER: an address on the platform domain, once it is chosen.
+    email: forgejo-admin@platform-domain.invalid
+    # Set once, so a person can change it in the UI without the chart resetting it.
+    passwordMode: initialOnlyNoReset
+
+  config:
+    APP_NAME: Schmeide
+    server:
+      # PLACEHOLDER: the Forgejo hostname. The platform domain is not chosen. .invalid
+      # never resolves, so nothing is issued or reachable until this is replaced.
+      DOMAIN: git.platform-domain.invalid
+      ROOT_URL: https://git.platform-domain.invalid/
+    database:
+      DB_TYPE: postgres
+      # PLACEHOLDER: the Postgres FQDN; see the matching note in ../temporal/values.yaml.
+      HOST: psql-schmeide.postgres.database.azure.com:5432
+      NAME: forgejo
+      # PLACEHOLDER: the admin login, until a dedicated one exists.
+      USER: schmeideadmin
+      SSL_MODE: require
+    service:
+      # Accounts are created by the platform through the API, one organization per tenant.
+      DISABLE_REGISTRATION: true
+
+  additionalConfigFromEnvs:
+    - name: FORGEJO__DATABASE__PASSWD
+      valueFrom:
+        secretKeyRef:
+          name: forgejo-db
+          key: password
+
+# Off until the hostname above is real. Then set enabled: true and replace the host; the
+# annotation has cert-manager issue the certificate.
+ingress:
+  enabled: false
+  className: traefik
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+  hosts:
+    # PLACEHOLDER: same hostname as gitea.config.server.DOMAIN.
+    - host: git.platform-domain.invalid
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: forgejo-tls
+      hosts:
+        - git.platform-domain.invalid

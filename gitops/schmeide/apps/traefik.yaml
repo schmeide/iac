@@ -1,0 +1,37 @@
+# The ingress controller. Traefik, because ingress-nginx was retired upstream in March
+# 2026 and gets no more fixes. It serves the Kubernetes Ingress API, which is what the
+# Forgejo chart and cert-manager's HTTP-01 solver both emit.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: traefik
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  sources:
+    # https://traefik.github.io/charts, 42.4.0 (Traefik v3.7.18) looked up 2026-11-16 from
+    # the repository index.
+    - repoURL: https://traefik.github.io/charts
+      chart: traefik
+      targetRevision: 42.4.0
+      helm:
+        releaseName: traefik
+        valueFiles:
+          - $values/gitops/schmeide/traefik/values.yaml
+    - repoURL: https://github.com/schmeide/iac.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: traefik
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

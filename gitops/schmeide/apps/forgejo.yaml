@@ -1,0 +1,36 @@
+# Forgejo: project code, one organization per tenant, one repository per project. Its
+# database and admin Secrets come from forgejo-secrets.yaml.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: forgejo
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: default
+  sources:
+    # oci://code.forgejo.org/forgejo-helm/forgejo, 17.3.2 (Forgejo 15.0) looked up
+    # 2026-11-16 from the releases of code.forgejo.org/forgejo-helm/forgejo-helm.
+    # No oci:// prefix: that is how Argo CD reads a Helm chart from an OCI registry.
+    - repoURL: code.forgejo.org/forgejo-helm
+      chart: forgejo
+      targetRevision: 17.3.2
+      helm:
+        releaseName: forgejo
+        valueFiles:
+          - $values/gitops/schmeide/forgejo/values.yaml
+    - repoURL: https://github.com/schmeide/iac.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: forgejo
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

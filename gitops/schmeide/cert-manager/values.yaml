@@ -1,0 +1,6 @@
+# Values for cert-manager, https://charts.jetstack.io.
+# https://github.com/cert-manager/cert-manager/blob/v1.21.3/deploy/charts/cert-manager/values.yaml
+
+# The chart ships its CRDs but does not install them unless asked.
+crds:
+  enabled: true

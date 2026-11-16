@@ -1,0 +1,13 @@
+# Values for Traefik, https://traefik.github.io/charts.
+# https://github.com/traefik/traefik-helm-chart/blob/v42.4.0/traefik/values.yaml
+#
+# The chart's defaults are what this needs: one Deployment, a LoadBalancer Service that
+# AKS gives a public IP, and the Kubernetes Ingress provider. The public IP is dynamic.
+# Reserve a static one when DNS names point at it; see gitops/README.md.
+
+# Named explicitly because cert-manager's HTTP-01 solver in apps/cluster-issuer.yaml and
+# every Ingress refer to the class by this name.
+ingressClass:
+  enabled: true
+  isDefaultClass: true
+  name: traefik

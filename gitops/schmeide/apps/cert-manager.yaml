@@ -1,0 +1,37 @@
+# cert-manager, for Let's Encrypt certificates on ingress hostnames. The ClusterIssuer is
+# in cluster-issuer.yaml. Values stay outside apps/ so this directory sync does not apply
+# them as manifests.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cert-manager
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  sources:
+    # https://charts.jetstack.io, v1.21.3 looked up 2026-11-16 from the repository index.
+    - repoURL: https://charts.jetstack.io
+      chart: cert-manager
+      targetRevision: v1.21.3
+      helm:
+        releaseName: cert-manager
+        valueFiles:
+          - $values/gitops/schmeide/cert-manager/values.yaml
+    - repoURL: https://github.com/schmeide/iac.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cert-manager
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # The CRDs are larger than the last-applied-configuration annotation allows.
+      - ServerSideApply=true
