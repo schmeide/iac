@@ -13,10 +13,11 @@ silent, do what that repo does.
 and the checklist for bringing the `schmeide` subscription online. `bootstrap/README.md` covers the state backend and
 the CI identity. `gitops/README.md` covers what Argo CD installs and every placeholder still to fill in.
 
-## The subscription does not exist yet
+## The subscription is live
 
-Nothing here has been planned or applied. Do not run `make plan`, `make apply-*`, `make bootstrap` or any `az` command
-that touches Azure unless the user asks for it in that message. `make check` needs no Azure access and is always safe.
+Everything but the Postgres server has been applied; `README.md`, "Current state", has what runs and what is blocked.
+Do not run `make apply-*`, `make bootstrap` or any `az` command that changes Azure unless the user asks for it in that
+message. Changes reach Azure through a merge to `main`. `make check` needs no Azure access and is always safe.
 
 ## File layout
 

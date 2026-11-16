@@ -122,7 +122,7 @@ resource "helm_release" "external_secrets" {
 
 # The Argo CD server stays ClusterIP. No domain is chosen, so there is no hostname to
 # put it on; reach the UI with
-#   kubectl -n argocd port-forward svc/argo-cd-server 8080:443
+#   kubectl -n argocd port-forward svc/argo-cd-argocd-server 8080:443
 # The admin password is left unset so the chart generates one, kept out of git and out of
 # terraform outputs.
 resource "helm_release" "argo_cd" {
