@@ -102,7 +102,9 @@ skipped because the `AZURE_ENABLED` repository variable is not `true`.
    `az aks get-versions -l eastus -o table` shows whether Kubernetes `1.36` is offered.
 5. **Fill in `principalId`** in `bootstrap/main.bicepparam` with your own object ID
    (`az ad signed-in-user show --query id -o tsv`).
-6. **Create the state backend:** `make bootstrap/whatif`, then `make bootstrap`.
+6. **Create the state backend:** `make bootstrap/whatif`, then `make bootstrap`. Then register the resource
+   providers the stack uses with `make bootstrap/providers`. A new subscription has almost none registered, and the
+   first apply fails with `MissingSubscriptionRegistration` without this.
 7. **Create the CI identity:** `./bootstrap/github-oidc.bash create`. It prints three commands.
 8. **Set the repository variables** it printed: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and `AZURE_SUBSCRIPTION_ID`.
    They are variables, not secrets; none is sensitive.

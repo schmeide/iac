@@ -181,6 +181,27 @@ bootstrap: want-az az-login ## Deploy the terraform state backend (run once, bef
 	echo "[$@] state backend is up. Every root module's backend.tf already points at it."
 	echo "[$@] Next: ./bootstrap/github-oidc.bash create, then 'make init'."
 
+# A new subscription has almost no resource providers registered, and the first apply
+# fails with MissingSubscriptionRegistration. Registration is free and is safe to repeat.
+BOOTSTRAP_PROVIDERS := \
+	Microsoft.Compute \
+	Microsoft.ContainerRegistry \
+	Microsoft.ContainerService \
+	Microsoft.DBforPostgreSQL \
+	Microsoft.Insights \
+	Microsoft.KeyVault \
+	Microsoft.ManagedIdentity \
+	Microsoft.Network \
+	Microsoft.OperationalInsights \
+	Microsoft.Storage
+
+bootstrap/providers: want-az az-login ## Register the resource providers the stack uses (run once, before the first apply)
+	for ns in $(BOOTSTRAP_PROVIDERS); do \
+		echo "[$@] $$ns"; \
+		az provider register --subscription $(BOOTSTRAP_SUB) --namespace $$ns --wait; \
+	done
+	echo "[$@] all providers registered. Next: ./bootstrap/github-oidc.bash create."
+
 ##@ Checks
 
 check: check/format check/lint check/markdown check/bicep check/validate ## Everything CI checks, in one target
