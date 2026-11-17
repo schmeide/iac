@@ -54,9 +54,11 @@ spec:
             - name: TEMPORAL_ADDRESS
               value: temporal-frontend.temporal.svc.cluster.local:7233
             # The claude CLI keeps its config and sessions under HOME; on the disk so they
-            # survive a restart, since the root filesystem is read-only.
+            # survive a restart, since the root filesystem is read-only. The volume root
+            # itself, because nothing creates a subdirectory on a fresh disk before the
+            # CLI first runs.
             - name: HOME
-              value: /data/home
+              value: /data
             - name: TMPDIR
               value: /tmp
           envFrom:
