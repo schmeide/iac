@@ -198,6 +198,23 @@ kubectl -n temporal delete pod psql-once
 To rotate, bump `value_wo_version` on `azurerm_key_vault_secret.schmeide_provisioner_password`, merge, run the same
 with `ALTER ROLE schmeide_provisioner PASSWORD :'pw';`, force-sync the ExternalSecret and restart the worker.
 
+Every app database is copied from `schmeide_app_template`. On Azure, the `public` schema of a new database belongs to
+`azure_pg_admin`, even in a copy of `template0`, so the database's owner could not create tables there. The template's
+`public` belongs to `pg_database_owner` instead, which resolves to each copy's owner. The worker's startup check fails
+until the template exists. Make it once: as `schmeide_provisioner`, so that it owns the template and may copy it, run
+
+```sql
+CREATE DATABASE schmeide_app_template TEMPLATE template0;
+REVOKE CONNECT ON DATABASE schmeide_app_template FROM PUBLIC;
+GRANT CONNECT ON DATABASE schmeide_app_template TO schmeideadmin;
+```
+
+then, as the admin, connected to `schmeide_app_template`:
+
+```sql
+ALTER SCHEMA public OWNER TO pg_database_owner;
+```
+
 ## Apps domain
 
 Built apps are served at `<host>.apps.schmeide.com` with one wildcard certificate, so no app needs a certificate or a
