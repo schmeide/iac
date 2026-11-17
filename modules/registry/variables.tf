@@ -20,6 +20,12 @@ variable "sku" {
   default     = "Basic"
 }
 
+variable "identity_ids" {
+  description = "User-assigned identities to attach to the registry, for ACR Tasks runs to authenticate as."
+  type        = list(string)
+  default     = []
+}
+
 variable "tags" {
   description = "Tags applied to every resource this module manages."
   type        = map(string)

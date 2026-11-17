@@ -11,6 +11,7 @@ module "registry" {
   name                = "schmeide"
   resource_group_name = azurerm_resource_group.registry.name
   location            = var.location
+  identity_ids        = [azurerm_user_assigned_identity.acr_run.id]
   tags                = local.tags
 }
 
