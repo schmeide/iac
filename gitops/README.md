@@ -161,7 +161,6 @@ Each is marked `PLACEHOLDER` in the file.
 
 | What | Where | Fill in |
 | --- | --- | --- |
-| schmeide.app image tag | `schmeide-app/kustomization.yaml` (`newTag`) | The first schmeide.app CI run on `main` sets it. Until then the migration Job cannot pull and the sync fails. |
 | Postgres login for Temporal and Forgejo | `temporal/values.yaml`, `forgejo/values.yaml`, `apps/*-secrets.yaml` | Both use the admin login for now. A dedicated login per service needs a role created inside Postgres, which terraform cannot reach from CI on a private server. |
 | Forgejo hostname | `forgejo/values.yaml` (`DOMAIN`, `ROOT_URL`, `ingress.hosts`, `ingress.tls`) | A name on the platform domain, once chosen. Then set `ingress.enabled: true`. |
 | Forgejo admin email | `forgejo/values.yaml` (`gitea.admin.email`) | An address on the platform domain. |

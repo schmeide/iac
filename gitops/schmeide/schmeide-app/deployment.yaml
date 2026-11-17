@@ -80,12 +80,12 @@ spec:
               mountPath: /tmp
           readinessProbe:
             httpGet:
-              path: /api/healthz
+              path: /healthz
               port: http
             periodSeconds: 10
           livenessProbe:
             httpGet:
-              path: /api/healthz
+              path: /healthz
               port: http
             initialDelaySeconds: 15
             periodSeconds: 20
