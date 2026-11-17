@@ -105,7 +105,7 @@ container registry, and Let's Encrypt certificates.
 | --- | --- | --- |
 | `network.tf` | `modules/network` | VNet, AKS node subnet, delegated Postgres subnet, Postgres private DNS zone |
 | `cluster.tf` | `modules/cluster` | AKS with workload identity, a system and an autoscaled user pool, the platform Key Vault |
-| `registry.tf` | `modules/registry` | Azure Container Registry, pull granted to the cluster |
+| `registry.tf` | `modules/registry` | Azure Container Registry, pull granted to the cluster, push to `schmeide-app` for schmeide.app's CI |
 | `postgres.tf` | `modules/postgres` | PostgreSQL flexible server, private access, databases for the platform, Temporal, Forgejo |
 | `frontends.tf` | `modules/frontends` | Storage account for generated frontend bundles |
 | `gitops.tf` | | Argo CD and External Secrets, and the root Argo Application |
@@ -122,8 +122,9 @@ file that wires its module, as in autobutler-org/iac.
 - A CDN or Front Door. The service is not chosen; see `modules/frontends/README.md`.
 - An Azure DNS zone. `schmeide.app` stays at Porkbun; see "DNS" below.
 - Monitoring beyond what AKS needs to run.
-- Push identities for the registry and a deploy identity for frontend bundles. They belong to the platform's build and
-  deploy steps, which do not exist yet.
+- A deploy identity for frontend bundles, and push identities for tenants' images. They belong to the platform's
+  build and deploy steps, which do not exist yet. The one push identity is schmeide.app's CI, in `registry.tf`, limited
+  to the `schmeide-app` repository; `gitops/README.md`, "Deploying schmeide.app", covers it.
 
 ### DNS
 
@@ -236,6 +237,8 @@ checks this and says so.
 `plan.yml` runs a real plan on a pull request, uploads the planfile, and posts the plan to the job summary and a sticky
 PR comment. `apply.yml` runs on push to `main`, calls `plan.yml` as its first job, and applies that job's planfile, so
 what gets applied is what was planned for that commit. Both are gated on `AZURE_ENABLED`.
+`apply.yml` skips a push that touches only `gitops/**` or Markdown, so schmeide.app's image tag commits do not run
+Terraform.
 
 `codeql.yml` scans the workflow files as the `actions` language. CodeQL has no Terraform or Bicep analyzer, so that is
 all it can read; `tflint` covers the Terraform.

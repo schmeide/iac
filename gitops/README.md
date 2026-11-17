@@ -104,6 +104,39 @@ earlier run left tables there owned by the admin, drop them or change their owne
 To rotate the password, bump `value_wo_version` on `azurerm_key_vault_secret.schmeide_app_postgres_password`, merge,
 then `ALTER ROLE schmeide_app PASSWORD :'pw';` with the new value and restart the pod.
 
+## Deploying schmeide.app
+
+schmeide/schmeide.app's CI builds the API image and deploys it in two steps: push to the registry, then commit the new
+tag here. Argo picks up the commit; nothing in this repo watches the registry.
+
+**Push.** On `main` only, the workflow logs in with `azure/login` (OIDC) as `id-schmeide-app-push`, a user-assigned
+identity in `azure/schmeide/registry.tf`. Its one federated credential trusts
+`repo:schmeide@357239714/schmeide.app@1459650460:ref:refs/heads/main`, the immutable subject GitHub mints for that
+repository. It holds Container Registry Repository Writer on the `schmeide` registry with an ABAC condition limiting it
+to the `schmeide-app` repository: it can push and pull there, and cannot delete, list, or touch any other repository.
+The image is `schmeide.azurecr.io/schmeide-app:<full git SHA of the schmeide.app commit>`. No `latest`.
+
+The workflow reads these as repository variables on schmeide/schmeide.app, which the owner sets from `gmake output`:
+
+| Variable | Terraform output |
+| --- | --- |
+| `AZURE_CLIENT_ID` | `schmeide_app_push_client_id` |
+| `AZURE_TENANT_ID` | `tenant_id` |
+| `AZURE_SUBSCRIPTION_ID` | `subscription_id` |
+
+**Tag.** The workflow then clones `schmeide/iac` with an SSH deploy key that has write access (the private key is a
+secret on schmeide/schmeide.app), sets the tag, and pushes one commit straight to `main`:
+
+- File: `gitops/schmeide/schmeide-app/kustomization.yaml`, created with the Application in #25.
+- Entry: the `images:` item with `name: schmeide-app` and `newName: schmeide.azurecr.io/schmeide-app`. Only its
+  `newTag` changes, to the full SHA. Nothing else in the file or the repo is touched.
+- Commit: subject `chore(deploy): schmeide-app <short SHA>`, body naming the schmeide.app commit. `git revert` of it
+  rolls the deployment back.
+- Push: fast-forward only. `main` requires linear history and forbids force pushes, so on a rejected push the workflow
+  fetches, rebases its one commit, and retries.
+
+`apply.yml` ignores pushes that touch only `gitops/**` or Markdown, so a tag commit does not run Terraform.
+
 ## Placeholders
 
 Each is marked `PLACEHOLDER` in the file.
