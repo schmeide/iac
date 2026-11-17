@@ -1,0 +1,27 @@
+# The one certificate every built app is served with: *.apps.schmeide.com, DNS-01 through
+# the letsencrypt-dns ClusterIssuer. In the traefik namespace because Traefik's default
+# TLSStore (gitops/schmeide/traefik/values.yaml) names a Secret in its own namespace, and
+# that store is what lets tenant Ingresses carry no TLS Secret of their own. One wildcard
+# also keeps per-app host names out of Certificate Transparency logs.
+#
+# It stays not Ready until the apps NS records exist at Porkbun (README.md, "DNS"). It is
+# in the last sync wave, so a pending certificate holds back nothing: Argo waits for a
+# wave to be healthy only before it starts the next one.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: apps-wildcard
+  namespace: traefik
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+    # The Certificate CRD arrives with cert-manager in the same sync.
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  secretName: apps-wildcard-tls
+  dnsNames:
+    - "*.apps.schmeide.com"
+    - apps.schmeide.com
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: letsencrypt-dns

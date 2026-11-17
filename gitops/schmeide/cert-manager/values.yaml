@@ -4,3 +4,14 @@
 # The chart ships its CRDs but does not install them unless asked.
 crds:
   enabled: true
+
+# Workload identity for DNS-01 on the apps.schmeide.com zone (apps/cluster-issuer-dns.jsonnet).
+# The name is fixed because azure/schmeide/dns.tf federates exactly
+# system:serviceaccount:cert-manager:cert-manager.
+serviceAccount:
+  name: cert-manager
+# The webhook projects a token only into pods with this label. The service account carries
+# no client-id annotation: the client id is not committed, and the ClusterIssuer names it
+# in managedIdentity.clientID, which is all cert-manager reads.
+podLabels:
+  azure.workload.identity/use: "true"

@@ -1,0 +1,2 @@
+# Set by azure/schmeide/gitops.tf from terraform. Empty here so the chart renders alone.
+certManager: {}

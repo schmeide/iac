@@ -13,6 +13,14 @@ spec:
     path: gitops/schmeide/apps
     directory:
       recurse: true
+      # Terraform outputs for the .jsonnet files under apps/, which the repository does
+      # not commit: values from azure/schmeide/gitops.tf. A file whose arguments are empty
+      # renders nothing, so it is harmless until terraform has applied them.
+      jsonnet:
+        tlas:
+          - name: certManager
+            code: true
+            value: {{ .Values.certManager | toJson | quote }}
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

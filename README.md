@@ -109,6 +109,7 @@ container registry, and Let's Encrypt certificates.
 | `postgres.tf` | `modules/postgres` | PostgreSQL flexible server, private access, databases for the platform, Temporal, Forgejo |
 | `frontends.tf` | `modules/frontends` | Storage account for generated frontend bundles |
 | `gitops.tf` | | Argo CD and External Secrets, and the root Argo Application |
+| `dns.tf` | | The `apps.schmeide.com` zone, its wildcard record, and cert-manager's DNS-01 identity |
 
 Argo CD then installs, from `gitops/schmeide/apps`: cert-manager with a Let's Encrypt issuer, Traefik as the ingress
 controller, Temporal, and Forgejo. `gitops/README.md` covers that layer.
@@ -120,7 +121,8 @@ file that wires its module, as in autobutler-org/iac.
 
 - Foundry resources. One is created per tenant, by the platform, later.
 - A CDN or Front Door. The service is not chosen; see `modules/frontends/README.md`.
-- An Azure DNS zone. `schmeide.app` stays at Porkbun; see "DNS" below.
+- Azure DNS for `schmeide.app` and `schmeide.com`. Both stay at Porkbun; only `apps.schmeide.com` is delegated to
+  Azure. See "DNS" below.
 - Monitoring beyond what AKS needs to run.
 - A deploy identity for frontend bundles, and push identities for tenants' images. They belong to the platform's
   build and deploy steps, which do not exist yet. The one push identity is schmeide.app's CI, in `registry.tf`, limited
@@ -141,6 +143,25 @@ redeploys. Adding it is a manual step for the owner, once, after the apply that 
    `185.199.108-111.153`.
 
 If the IP is ever replaced, the record has to be edited by hand; `prevent_destroy` on the IP is there to stop that.
+
+#### `apps.schmeide.com`
+
+Built apps are served at `<host>.apps.schmeide.com`. `schmeide.com` stays at Porkbun: its apex is the marketing site
+on GitHub Pages and its MX and SPF records forward mail, and terraform never touches it. Only the `apps` label is
+delegated to the Azure DNS zone `apps.schmeide.com` in `dns.tf` (resource group `schmeide-network`), which holds a
+wildcard `A` record `*` aliased to `pip-schmeide-ingress`. cert-manager answers DNS-01 there with the
+`id-schmeide-cert-manager` workload identity, which holds DNS Zone Contributor on that zone only, and issues the
+`*.apps.schmeide.com` certificate Traefik serves by default (`gitops/README.md`, "Apps domain").
+
+The delegation is a manual step for the owner, once, after the apply that creates the zone:
+
+1. `gmake init`, then `gmake output` and read `apps_name_servers`: four `ns1-NN.azure-dns.com.`-style names.
+2. At Porkbun, in the `schmeide.com` zone, add four `NS` records, host `apps`, one per name server. Change no other
+   `schmeide.com` record.
+3. Check it: `dig NS apps.schmeide.com` (or `dig +short NS apps.schmeide.com`) lists the four Azure name servers,
+   `dig +short anything.apps.schmeide.com` returns `ingress_ip_address`, and `dig +short MX schmeide.com` is unchanged.
+
+Until then the wildcard Certificate stays not Ready; nothing else waits on it.
 
 ## State
 

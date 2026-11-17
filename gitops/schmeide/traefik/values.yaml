@@ -24,3 +24,11 @@ service:
   # Merged with the chart's spec, so type stays LoadBalancer.
   spec:
     externalTrafficPolicy: Local
+
+# Serve the *.apps.schmeide.com wildcard (apps/apps-wildcard-certificate.yaml) to any TLS
+# request no other certificate matches, so tenant Ingresses need no TLS Secret of their
+# own. Until cert-manager has issued it, Traefik falls back to its self-signed default.
+tlsStore:
+  default:
+    defaultCertificate:
+      secretName: apps-wildcard-tls

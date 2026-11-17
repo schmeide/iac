@@ -11,7 +11,7 @@
 # Safe to re-run: every step checks for what it would create first. create also assigns
 # Role Based Access Control Administrator on the subscription, with an ABAC condition.
 # Contributor cannot write role assignments, and the cluster module needs several. The
-# condition allows write and delete only for the five built-in roles this repo's
+# condition allows write and delete only for the six built-in roles this repo's
 # terraform assigns. An assignment with an empty condition is not this grant. It would be
 # an unconstrained RBAC administrator, and doctor reports that as missing.
 #
@@ -36,12 +36,14 @@ readonly AUDIENCE="api://AzureADTokenExchange"
 #   az role definition list --name "Role Based Access Control Administrator" \
 #     --query "[0].name" -o tsv
 #   f58310d9-a9f6-439a-9e8d-f62e7b41a168
-# The five ids in rbac_admin_condition are Network Contributor, Container Registry
+# The six ids in rbac_admin_condition are Network Contributor, Container Registry
 # Repository Reader, Azure Kubernetes Service Cluster User Role, Azure Kubernetes
-# Service RBAC Cluster Admin, and Container Registry Repository Writer, in that order.
-# The last was read on 2026-11-17 with
+# Service RBAC Cluster Admin, Container Registry Repository Writer, and DNS Zone
+# Contributor, in that order. The last two were read on 2026-11-17 with
 #   az role definition list --name "Container Registry Repository Writer" --query "[0].name" -o tsv
 #   2a1e307c-b015-4ebd-883e-5b7698a07328
+#   az role definition list --name "DNS Zone Contributor" --query "[0].name" -o tsv
+#   befefa01-2a29-4197-83a8-272ff33ce314
 readonly RBAC_ADMIN_ROLE="Role Based Access Control Administrator"
 readonly RBAC_ADMIN_CONDITION_VERSION="2.0"
 
@@ -79,8 +81,9 @@ What 'create' does:
   5. Role Based Access Control Administrator on the subscription, with a condition that
      allows role-assignment write and delete only for Network Contributor, Container
      Registry Repository Reader, Azure Kubernetes Service Cluster User Role, Azure
-     Kubernetes Service RBAC Cluster Admin, and Container Registry Repository Writer
-     (schmeide.app's push identity). A new role in terraform needs adding to that
+     Kubernetes Service RBAC Cluster Admin, Container Registry Repository Writer
+     (schmeide.app's push identity), and DNS Zone Contributor (cert-manager's DNS-01
+     identity). A new role in terraform needs adding to that
      list and a re-run of create, or the apply fails on the role assignment.
 
 Run 'make bootstrap' first -- step 4 needs the state account to exist.
@@ -205,6 +208,7 @@ rbac_admin_condition() {
 	guids+=", 4abbcc35-e782-43d8-92c5-2d3f1bd2253f"
 	guids+=", b1ff04bb-8a4e-4dc4-8eb5-8693973ce19b"
 	guids+=", 2a1e307c-b015-4ebd-883e-5b7698a07328"
+	guids+=", befefa01-2a29-4197-83a8-272ff33ce314"
 	printf '%s' \
 		"((!(ActionMatches{'Microsoft.Authorization/roleAssignments/write'}))" \
 		" OR (@Request[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {${guids}}))" \
