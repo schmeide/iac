@@ -372,15 +372,16 @@ print_variables() {
 	local app_id="$1" tenant_id="$2" subscription_id="$3"
 	cat <<VARS
 
-Set these as repository *variables* (not secrets -- none of them is sensitive, and OIDC
-means there is no client secret at all):
+Set these as repository *secrets*. None is a credential -- OIDC means there is no client
+secret at all -- but the repository is public, and secrets are masked in Actions logs where
+variables are not:
 
-  gh variable set AZURE_CLIENT_ID --repo ${REPO} --body ${app_id}
-  gh variable set AZURE_TENANT_ID --repo ${REPO} --body ${tenant_id}
-  gh variable set AZURE_SUBSCRIPTION_ID --repo ${REPO} --body ${subscription_id}
+  gh secret set AZURE_CLIENT_ID --repo ${REPO} --body ${app_id}
+  gh secret set AZURE_TENANT_ID --repo ${REPO} --body ${tenant_id}
+  gh secret set AZURE_SUBSCRIPTION_ID --repo ${REPO} --body ${subscription_id}
 
 Without gh, add them by hand at:
-  https://github.com/${REPO}/settings/variables/actions
+  https://github.com/${REPO}/settings/secrets/actions
 VARS
 }
 
