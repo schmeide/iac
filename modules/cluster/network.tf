@@ -27,9 +27,16 @@ resource "azurerm_public_ip" "ingress" {
 }
 
 # Outside the node resource group, the cloud provider acts as the control-plane identity
-# and needs to read and join the address. Scoped to the address alone.
+# and needs to read and join the address. It lists public IPs at the resource-group level
+# (Microsoft.Network/publicIPAddresses/read on .../resourceGroups/<rg>/providers/
+# Microsoft.Network), so a grant on the address alone fails with AuthorizationFailed.
+# Scoped to the cluster's resource group, as the AKS static-IP docs prescribe.
+data "azurerm_resource_group" "cluster" {
+  name = var.resource_group_name
+}
+
 resource "azurerm_role_assignment" "control_ingress_ip" {
-  scope                            = azurerm_public_ip.ingress.id
+  scope                            = data.azurerm_resource_group.cluster.id
   role_definition_name             = "Network Contributor"
   principal_id                     = azurerm_user_assigned_identity.control.principal_id
   principal_type                   = "ServicePrincipal"
