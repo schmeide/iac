@@ -72,3 +72,18 @@ output "cert_manager_identity_client_id" {
   description = "Client id of cert-manager's DNS-01 workload identity. Not a secret; passed to Argo by the argocd-bootstrap release."
   value       = azurerm_user_assigned_identity.cert_manager.client_id
 }
+
+output "worker_identity_client_id" {
+  description = "Client id of the schmeide.app worker's workload identity. Not a secret; reaches the worker through Key Vault secret schmeide-app-worker-azure."
+  value       = azurerm_user_assigned_identity.worker.client_id
+}
+
+output "acr_run_identity_client_id" {
+  description = "Client id of the identity ACR runs push apps/* images as. Not a secret."
+  value       = azurerm_user_assigned_identity.acr_run.client_id
+}
+
+output "acr_run_identity_id" {
+  description = "ARM id of the identity ACR runs push apps/* images as."
+  value       = azurerm_user_assigned_identity.acr_run.id
+}

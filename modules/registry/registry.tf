@@ -16,6 +16,16 @@ resource "azurerm_container_registry" "this" {
   public_network_access_enabled = true
   role_assignment_mode          = "AbacRepositoryPermissions"
 
+  # User-assigned identities ACR Tasks runs may authenticate as. A run can name only an
+  # identity the registry carries.
+  dynamic "identity" {
+    for_each = length(var.identity_ids) > 0 ? [1] : []
+    content {
+      type         = "UserAssigned"
+      identity_ids = var.identity_ids
+    }
+  }
+
   tags = var.tags
 
   lifecycle {
