@@ -21,21 +21,42 @@ subscription may not create PostgreSQL flexible servers ([#3](https://github.com
 - Key Vault `kv-schmeide` with `postgres-admin-password` and `forgejo-admin-password`.
 - Container registry `schmeide` (Basic), storage account `stschmeidefrontends` with the `bundles` container.
 - The identities and role assignments the modules declare.
-- Helm releases `external-secrets`, `argo-cd` and `argocd-bootstrap`. Argo has synced Traefik: its LoadBalancer
-  Service has a public IP that answers 404, as Traefik with no routes does.
+- Helm releases `external-secrets`, `argo-cd` and `argocd-bootstrap`.
+- vCPU quota in `centralus`: 16 regional and 12 for the Dav6 family, room for two user nodes, an upgrade surge node
+  and a system pool rotation ([#5](https://github.com/schmeide/iac/issues/5)). Dsv6 stays at 10.
 
-Open:
+Verified inside the cluster with `kubectl` on 2026-11-16 ([#4](https://github.com/schmeide/iac/issues/4)):
 
-- **Kubernetes access for people** ([#4](https://github.com/schmeide/iac/issues/4)). Only the CI identity holds an
-  `Azure Kubernetes Service RBAC *` role, and subscription Owner does not imply one. So cert-manager, the
-  ExternalSecrets, Temporal, Forgejo and the Applications' sync status are unverified.
-- **vCPU quota** ([#5](https://github.com/schmeide/iac/issues/5)). The regional limit in `centralus` is 10 and the
-  cluster uses 6, which leaves no room for a second user node and an upgrade surge at once.
+- Both nodes `Ready` on Kubernetes 1.36.
+- Argo CD: every pod running, and the `schmeide`, `cert-manager`, `traefik`, `temporal` and `forgejo` Applications
+  `Synced` and `Healthy`. `cert-manager` was `OutOfSync` on the webhook AKS edits until
+  [#18](https://github.com/schmeide/iac/issues/18).
+- cert-manager: controller, cainjector and webhook running; the `letsencrypt` ClusterIssuer is `Ready` with a
+  registered ACME account. No Certificate exists yet, because no hostname does.
+- External Secrets: the `schmeide` ClusterSecretStore is `Valid`, and the `temporal-db`, `forgejo-db` and
+  `forgejo-admin` ExternalSecrets are `SecretSynced`.
+- Traefik: running, with a LoadBalancer IP that answers 404, as Traefik with no routes does.
+- Temporal: frontend, history, matching, worker, web and admintools running, with no errors logged since a
+  startup restart of matching. Forgejo: running and `Ready`, and its health check pings Postgres every 10 seconds.
 
 ### Reaching the cluster
 
 Local accounts are disabled, so `kubectl` authenticates through `kubelogin` with your Azure CLI login, and needs an
-`Azure Kubernetes Service RBAC` role on the cluster (#4).
+`Azure Kubernetes Service RBAC` role on the cluster. Subscription Owner does not include one. The owner's account
+holds `Azure Kubernetes Service RBAC Cluster Admin` at the cluster's scope, granted by hand rather than in Terraform,
+so that no object ID is committed to this public repository:
+
+```bash
+az role assignment create \
+  --assignee-object-id "$(az ad signed-in-user show --query id -o tsv)" \
+  --assignee-principal-type User \
+  --role "Azure Kubernetes Service RBAC Cluster Admin" \
+  --scope "$(az aks show -g schmeide-cluster -n schmeide --subscription schmeide --query id -o tsv)"
+```
+
+The assignment is scoped to the cluster resource, so it is deleted with it. **Run it again whenever the cluster is
+recreated.** It takes a few minutes to reach the API server. Use `Azure Kubernetes Service RBAC Reader` instead for an
+account that should only look.
 
 ```bash
 brew install kubectl kubelogin helm
@@ -51,7 +72,7 @@ No hostname exists yet, so the UIs are reached with port-forward only:
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d
 kubectl -n argocd port-forward svc/argo-cd-argocd-server 8080:443
 
-# Temporal Web at http://localhost:8081, once Postgres exists
+# Temporal Web at http://localhost:8081
 kubectl -n temporal port-forward svc/temporal-web 8081:8080
 ```
 
@@ -157,10 +178,11 @@ skipped because the `AZURE_ENABLED` repository variable is not `true`.
    | `psql-schmeide` | `azure/schmeide/postgres.tf`, `gitops/schmeide/temporal/values.yaml`, `forgejo/values.yaml` |
    | `stschmeidefrontends` | `azure/schmeide/frontends.tf` |
 
-4. **Check quota and versions in the region** (`centralus` by default). The cluster needs about 12 vCPUs at its default
-   ceiling: one `Standard_D2s_v6` system node, room to rotate it, and up to two `Standard_D4as_v6` user nodes. A new
-   subscription's per-family quota may be lower. `az vm list-usage -l centralus -o table` shows it, and
-   `az aks get-versions -l centralus -o table` shows whether Kubernetes `1.36` is offered.
+4. **Check quota and versions in the region** (`centralus` by default). The cluster needs 16 regional vCPUs at its
+   default ceiling: one `Standard_D2s_v6` system node and room to rotate it (4 Dsv6), and up to two
+   `Standard_D4as_v6` user nodes plus an upgrade surge node (12 Dav6). A new subscription's limits are usually 10.
+   `az vm list-usage -l centralus -o table` shows them, and `az aks get-versions -l centralus -o table` shows whether
+   Kubernetes `1.36` is offered.
 5. **Fill in `principalId`** in `bootstrap/main.bicepparam` with your own object ID
    (`az ad signed-in-user show --query id -o tsv`).
 6. **Create the state backend:** `make bootstrap/whatif`, then `make bootstrap`. Then register the resource
