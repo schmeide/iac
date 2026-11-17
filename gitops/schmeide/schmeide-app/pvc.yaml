@@ -1,0 +1,16 @@
+# Uploads and project workspaces, and the claude CLI's home. One disk, one pod: the
+# Deployment is Recreate so a rollout never mounts it twice.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: schmeide-app-data
+  annotations:
+    # Keep the data if the Application or this file goes away; delete it by hand.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: managed-csi
+  resources:
+    requests:
+      storage: 8Gi

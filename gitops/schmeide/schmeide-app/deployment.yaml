@@ -1,0 +1,102 @@
+# The schmeide.app API. Stage 1: it plans apps and writes proposals, and builds nothing
+# (SCHMEIDE_BUILDS=off). The site stays on GitHub Pages at https://schmeide.app.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: schmeide-app-api
+spec:
+  replicas: 1
+  # Uploads and workspaces are on one ReadWriteOnce disk: two pods would disagree, and a
+  # rolling update would mount it twice.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: schmeide-app-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: schmeide-app-api
+    spec:
+      # The pod runs a model agent and needs no Kubernetes API access.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        # The node image's `node` user. fsGroup makes the managed disk writable by it.
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: schmeide-app
+          # The image's own command, `node src/main.ts` in the server directory.
+          ports:
+            - name: http
+              containerPort: 3100
+          env:
+            - name: SCHMEIDE_BUILDS
+              value: "off"
+            - name: SCHMEIDE_HOST
+              value: 0.0.0.0
+            - name: PORT
+              value: "3100"
+            - name: SCHMEIDE_PUBLIC_URL
+              value: https://schmeide.app
+            - name: SCHMEIDE_API_URL
+              value: https://api.schmeide.app
+            - name: SCHMEIDE_DATA_DIR
+              value: /data
+            # Plaintext in-cluster; the server has no TLS options. Temporal namespace
+            # `default`, which the temporal chart registers (server.config.namespaces).
+            - name: TEMPORAL_ADDRESS
+              value: temporal-frontend.temporal.svc.cluster.local:7233
+            # The claude CLI keeps its config and sessions under HOME; on the disk so they
+            # survive a restart, since the root filesystem is read-only.
+            - name: HOME
+              value: /data/home
+            - name: TMPDIR
+              value: /tmp
+          envFrom:
+            - secretRef:
+                name: schmeide-app
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+          readinessProbe:
+            httpGet:
+              path: /api/healthz
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          # One user node (D4as_v6, 4 vCPU / 16 GiB, autoscaled 1-2; see #5). The request
+          # is what the API idles at; the limits leave room for a claude CLI run or two.
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 2Gi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: schmeide-app-data
+        - name: tmp
+          emptyDir:
+            sizeLimit: 1Gi

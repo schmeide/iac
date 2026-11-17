@@ -1,0 +1,18 @@
+# The schmeide.app API, applied by apps/schmeide-app.yaml. Plain manifests; the image tag
+# lives only here, and schmeide/schmeide.app's CI changes nothing but newTag (see
+# "Deploying schmeide.app" in gitops/README.md).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: schmeide-app
+resources:
+  - pvc.yaml
+  - migrate-job.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+images:
+  - name: schmeide-app
+    newName: schmeide.azurecr.io/schmeide-app
+    # PLACEHOLDER: no image is pushed yet. The first schmeide.app CI run on main replaces
+    # this with the full SHA of its commit.
+    newTag: PLACEHOLDER

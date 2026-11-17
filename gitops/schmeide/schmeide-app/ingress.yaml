@@ -1,0 +1,27 @@
+# https://api.schmeide.app. cert-manager issues the certificate over HTTP-01 once the name
+# resolves to the Traefik address. Traefik sets X-Forwarded-For to the caller, which the
+# sign-in limit counts by; traefik/values.yaml keeps the caller's address intact
+# (externalTrafficPolicy: Local).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: schmeide-app-api
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - api.schmeide.app
+      secretName: schmeide-app-api-tls
+  rules:
+    - host: api.schmeide.app
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: schmeide-app-api
+                port:
+                  name: http

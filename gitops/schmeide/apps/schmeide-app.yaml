@@ -1,0 +1,26 @@
+# The schmeide.app API at https://api.schmeide.app. Its manifests are a kustomization
+# outside apps/, so the root Application does not also apply them as raw manifests. After
+# schmeide-app-secrets.yaml (waves 0 and 1), which makes the namespace and the Secret the
+# pod loads.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: schmeide-app
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/schmeide/iac.git
+    targetRevision: main
+    path: gitops/schmeide/schmeide-app
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: schmeide-app
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

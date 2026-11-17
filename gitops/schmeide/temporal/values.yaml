@@ -8,6 +8,14 @@
 
 server:
   config:
+    # Registers the `default` Temporal namespace, which the schmeide.app API uses (it has
+    # no namespace option). The job runs `describe || create`, so it is safe on every
+    # sync; Argo runs the chart's post-install/post-upgrade hook as PostSync.
+    namespaces:
+      create: true
+      namespace:
+        - name: default
+          retention: 3d
     persistence:
       defaultStore: default
       visibilityStore: visibility
@@ -19,9 +27,6 @@ server:
           sql: &sql
             pluginName: postgres12
             databaseName: temporal
-            # PLACEHOLDER: the Postgres FQDN. This is the name azure/schmeide/postgres.tf
-            # asks for (psql-schmeide). Confirm against `make output` (postgres_fqdn) after
-            # the first apply, and change all three together if the name was taken.
             connectAddr: psql-schmeide.postgres.database.azure.com:5432
             connectProtocol: tcp
             # PLACEHOLDER: the admin login, until a dedicated one exists. See
