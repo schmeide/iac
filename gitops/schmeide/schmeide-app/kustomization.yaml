@@ -13,6 +13,4 @@ resources:
 images:
   - name: schmeide-app
     newName: schmeide.azurecr.io/schmeide-app
-    # PLACEHOLDER: no image is pushed yet. The first schmeide.app CI run on main replaces
-    # this with the full SHA of its commit.
-    newTag: PLACEHOLDER
+    newTag: "8d4c696a0a4b4d8dabc93c9eacbc56a31c696f0f"
