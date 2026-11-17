@@ -17,6 +17,7 @@ in the `argocd-initial-admin-secret` Secret. There is no public hostname for it.
 | `traefik` | `traefik` | 42.4.0 (Traefik v3.7.18) | `https://traefik.github.io/charts` |
 | `temporal` | `temporal` | 1.8.0 (server 1.32.2) | `https://go.temporal.io/helm-charts` |
 | `forgejo` | `forgejo` | 17.3.2 (Forgejo 15.0) | `oci://code.forgejo.org/forgejo-helm/forgejo` |
+| `schmeide-app` | none: kustomize | image tag in `schmeide-app/kustomization.yaml` | this repo |
 
 Terraform installs `external-secrets` 2.15.0 and `argo-cd` 10.18.0 (Argo CD v3.6.1). All versions were read from the
 upstream repository indexes or release lists on 2026-11-16. Renovate keeps them current.
@@ -27,10 +28,27 @@ Besides the Applications, `apps/` holds:
 - `temporal-secrets.yaml`, `forgejo-secrets.yaml`, `schmeide-app-secrets.yaml`: the namespaces, and ExternalSecrets
   that project secrets from the platform Key Vault through the `schmeide` ClusterSecretStore.
 
-Traefik is the ingress controller because ingress-nginx was retired upstream in March 2026.
+Traefik is the ingress controller because ingress-nginx was retired upstream in March 2026. Its Service uses
+`externalTrafficPolicy: Local`, so Traefik sees the caller's address and puts it in `X-Forwarded-For`; the
+schmeide.app API limits sign-in attempts per address.
+
+The Temporal chart registers the `default` Temporal namespace (`server.config.namespaces`), which the schmeide.app API
+uses.
+
+## The schmeide.app API
+
+`apps/schmeide-app.yaml` applies the kustomization in `schmeide-app/`, outside `apps/` so the root Application does
+not also apply it as raw manifests:
+
+- Deployment `schmeide-app-api`: one replica, `Recreate`, `SCHMEIDE_BUILDS=off`, environment from the
+  `schmeide-app/schmeide-app` Secret, and an 8 GiB managed disk (`schmeide-app-data`) at `/data`, which also holds the
+  claude CLI's `HOME`. Argo never prunes or deletes the disk; remove it by hand.
+- Service and Ingress for `https://api.schmeide.app`, certificate from the `letsencrypt` ClusterIssuer.
+- Job `schmeide-app-migrate`, a PreSync hook running `node src/migrate.ts`. If it fails the sync stops before the
+  Deployment changes. It needs the `schmeide_app` login below.
 
 Sync waves order the first sync: namespaces and the two Applications that bring CRDs (cert-manager, Traefik) at 0,
-the ClusterIssuer and ExternalSecrets at 1, Temporal and Forgejo at 2.
+the ClusterIssuer and ExternalSecrets at 1, Temporal and Forgejo at 2, the schmeide.app API at 3.
 
 ## Secrets
 
@@ -127,7 +145,7 @@ The workflow reads these as repository variables on schmeide/schmeide.app, which
 **Tag.** The workflow then clones `schmeide/iac` with an SSH deploy key that has write access (the private key is a
 secret on schmeide/schmeide.app), sets the tag, and pushes one commit straight to `main`:
 
-- File: `gitops/schmeide/schmeide-app/kustomization.yaml`, created with the Application in #25.
+- File: `gitops/schmeide/schmeide-app/kustomization.yaml`.
 - Entry: the `images:` item with `name: schmeide-app` and `newName: schmeide.azurecr.io/schmeide-app`. Only its
   `newTag` changes, to the full SHA. Nothing else in the file or the repo is touched.
 - Commit: subject `chore(deploy): schmeide-app <short SHA>`, body naming the schmeide.app commit. `git revert` of it
@@ -143,7 +161,7 @@ Each is marked `PLACEHOLDER` in the file.
 
 | What | Where | Fill in |
 | --- | --- | --- |
-| Postgres FQDN | `temporal/values.yaml` (`connectAddr`, `serverName`), `forgejo/values.yaml` (`HOST`), `apps/schmeide-app-secrets.yaml` (`DATABASE_URL`) | `postgres_fqdn` output after the first apply. It matches if `psql-schmeide` was available. |
+| schmeide.app image tag | `schmeide-app/kustomization.yaml` (`newTag`) | The first schmeide.app CI run on `main` sets it. Until then the migration Job cannot pull and the sync fails. |
 | Postgres login for Temporal and Forgejo | `temporal/values.yaml`, `forgejo/values.yaml`, `apps/*-secrets.yaml` | Both use the admin login for now. A dedicated login per service needs a role created inside Postgres, which terraform cannot reach from CI on a private server. |
 | Forgejo hostname | `forgejo/values.yaml` (`DOMAIN`, `ROOT_URL`, `ingress.hosts`, `ingress.tls`) | A name on the platform domain, once chosen. Then set `ingress.enabled: true`. |
 | Forgejo admin email | `forgejo/values.yaml` (`gitea.admin.email`) | An address on the platform domain. |

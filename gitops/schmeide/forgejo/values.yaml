@@ -21,7 +21,6 @@ gitea:
       ROOT_URL: https://git.platform-domain.invalid/
     database:
       DB_TYPE: postgres
-      # PLACEHOLDER: the Postgres FQDN; see the matching note in ../temporal/values.yaml.
       HOST: psql-schmeide.postgres.database.azure.com:5432
       NAME: forgejo
       # PLACEHOLDER: the admin login, until a dedicated one exists.

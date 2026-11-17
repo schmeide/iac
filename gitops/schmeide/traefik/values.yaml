@@ -18,3 +18,9 @@ service:
   annotations:
     service.beta.kubernetes.io/azure-load-balancer-resource-group: schmeide-cluster
     service.beta.kubernetes.io/azure-pip-name: pip-schmeide-ingress
+  # Local keeps the caller's address: with the default (Cluster) kube-proxy SNATs it to a
+  # node IP, every request reaches Traefik from the same address, and the X-Forwarded-For
+  # it sets would put all callers under one sign-in limit (schmeide-app/ingress.yaml).
+  # Merged with the chart's spec, so type stays LoadBalancer.
+  spec:
+    externalTrafficPolicy: Local
