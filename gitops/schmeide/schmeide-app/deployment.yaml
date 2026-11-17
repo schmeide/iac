@@ -20,6 +20,17 @@ spec:
     spec:
       # The pod runs a model agent and needs no Kubernetes API access.
       automountServiceAccountToken: false
+      # The worker (worker.yaml) shares this pod's ReadWriteOnce disk and is required on its
+      # node; prefer the worker's node when this pod is recreated, where the disk is attached.
+      affinity:
+        podAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: schmeide-app-worker
+                topologyKey: kubernetes.io/hostname
       securityContext:
         runAsNonRoot: true
         # The node image's `node` user. fsGroup makes the managed disk writable by it.
