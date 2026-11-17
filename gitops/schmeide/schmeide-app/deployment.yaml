@@ -61,6 +61,15 @@ spec:
               value: /data
             - name: TMPDIR
               value: /tmp
+            # The Temporal worker bundles workflows with swc, whose native addon caches itself and
+            # refuses any cache dir with a parent writable by others. Every emptyDir and the
+            # fsGroup volume are, so the check fails and the pod crash-loops. Nothing else runs
+            # as another user here and the root filesystem is read-only, so skip the check and
+            # keep the cache in the pod-private /tmp.
+            - name: SWC_NATIVE_BINDING_CACHE
+              value: /tmp/swc
+            - name: SWC_NATIVE_BINDING_CACHE_SKIP_SECURITY_CHECK
+              value: "1"
           envFrom:
             - secretRef:
                 name: schmeide-app
