@@ -1,7 +1,7 @@
 # Argo CD and External Secrets, installed once, as in autobutler-org/iac. Argo then
 # watches gitops/schmeide/apps on main and applies everything there: cert-manager, the
-# ingress controller, Temporal, Forgejo, and the ExternalSecrets that hand them their
-# database passwords. gitops/README.md covers that layer.
+# ingress controller, Temporal, Forgejo, and the ExternalSecrets that hand them and the
+# schmeide.app API their secrets. gitops/README.md covers that layer.
 #
 # Chart versions looked up on 2026-11-16 from the upstream Helm repository indexes:
 # external-secrets 2.15.0 (appVersion v2.15.0) at https://charts.external-secrets.io and
@@ -65,6 +65,55 @@ resource "azurerm_key_vault_secret" "forgejo_admin_password" {
   value_wo         = ephemeral.random_password.forgejo_admin.result
   value_wo_version = 1
   content_type     = "password for the Forgejo admin user"
+  tags             = local.tags
+
+  # The vault holds the only copy. Destroying the secret loses the password.
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+# The schmeide.app API's session-signing key and the password of its Postgres role,
+# generated the same way and projected by gitops/schmeide/apps/schmeide-app-secrets.yaml.
+# The role itself is created by hand inside Postgres (gitops/README.md, "The schmeide_app
+# login"), so bumping the password's value_wo_version also needs an ALTER ROLE there.
+ephemeral "random_password" "schmeide_app_auth" {
+  length      = 64
+  special     = false
+  min_lower   = 1
+  min_upper   = 1
+  min_numeric = 1
+}
+
+resource "azurerm_key_vault_secret" "schmeide_app_auth_secret" {
+  name             = "schmeide-app-auth-secret"
+  key_vault_id     = module.cluster.key_vault_id
+  value_wo         = ephemeral.random_password.schmeide_app_auth.result
+  value_wo_version = 1
+  content_type     = "SCHMEIDE_AUTH_SECRET for the schmeide.app API"
+  tags             = local.tags
+
+  # Destroying it signs every user out; keep it unless that is the intent.
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+# Alphanumeric only: it is spliced into DATABASE_URL unescaped.
+ephemeral "random_password" "schmeide_app_postgres" {
+  length      = 32
+  special     = false
+  min_lower   = 1
+  min_upper   = 1
+  min_numeric = 1
+}
+
+resource "azurerm_key_vault_secret" "schmeide_app_postgres_password" {
+  name             = "schmeide-app-postgres-password"
+  key_vault_id     = module.cluster.key_vault_id
+  value_wo         = ephemeral.random_password.schmeide_app_postgres.result
+  value_wo_version = 1
+  content_type     = "password for schmeide_app@psql-schmeide"
   tags             = local.tags
 
   # The vault holds the only copy. Destroying the secret loses the password.

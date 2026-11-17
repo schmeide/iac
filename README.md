@@ -18,7 +18,8 @@ subscription may not create PostgreSQL flexible servers ([#3](https://github.com
 - AKS `schmeide`, Kubernetes 1.36, one `Standard_D2s_v6` system node and a `Standard_D4as_v6` user pool (1-2 nodes).
 - PostgreSQL 17 `psql-schmeide` (`B_Standard_B2s`), with the `schmeide`, `temporal`, `temporal_visibility` and
   `forgejo` databases. Its FQDN matches the one in `gitops/`.
-- Key Vault `kv-schmeide` with `postgres-admin-password` and `forgejo-admin-password`.
+- Key Vault `kv-schmeide` with `postgres-admin-password`, `forgejo-admin-password`, `schmeide-app-auth-secret` and
+  `schmeide-app-postgres-password`.
 - Container registry `schmeide` (Basic), storage account `stschmeidefrontends` with the `bundles` container.
 - The identities and role assignments the modules declare.
 - Helm releases `external-secrets`, `argo-cd` and `argocd-bootstrap`.
