@@ -110,3 +110,47 @@ resource "azurerm_key_vault_secret" "schmeide_provisioner_password" {
     prevent_destroy = true
   }
 }
+
+# The worker's registry rights. Both roles are on bootstrap/github-oidc.bash's allow-list.
+#
+# Container Registry Tasks Contributor: scheduleRun, listBuildSourceUploadUrl, runs/read and
+# runs/listLogSasUrl, which a deploy needs, plus managing tasks and agent pools on this
+# registry, which it does not. A custom role with only the four would be narrower, but CI
+# cannot write role definitions; swap it in if that changes.
+resource "azurerm_role_assignment" "worker_acr_tasks" {
+  scope                = module.registry.id
+  role_definition_name = "Container Registry Tasks Contributor"
+  principal_id         = azurerm_user_assigned_identity.worker.principal_id
+  principal_type       = "ServicePrincipal"
+}
+
+# Container Registry Repository Contributor on apps/* only, so removeProject can delete an
+# app's repositories, and so a run scheduled with the caller's identity can push there.
+resource "azurerm_role_assignment" "worker_acr_apps" {
+  scope                = module.registry.id
+  role_definition_name = "Container Registry Repository Contributor"
+  principal_id         = azurerm_user_assigned_identity.worker.principal_id
+  principal_type       = "ServicePrincipal"
+  condition_version    = "2.0"
+  condition            = <<-CONDITION
+    (
+     (
+      !(ActionMatches{'Microsoft.ContainerRegistry/registries/repositories/content/read'})
+      AND
+      !(ActionMatches{'Microsoft.ContainerRegistry/registries/repositories/metadata/read'})
+      AND
+      !(ActionMatches{'Microsoft.ContainerRegistry/registries/repositories/content/write'})
+      AND
+      !(ActionMatches{'Microsoft.ContainerRegistry/registries/repositories/metadata/write'})
+      AND
+      !(ActionMatches{'Microsoft.ContainerRegistry/registries/repositories/content/delete'})
+      AND
+      !(ActionMatches{'Microsoft.ContainerRegistry/registries/repositories/metadata/delete'})
+     )
+     OR
+     (
+      @Request[Microsoft.ContainerRegistry/registries/repositories:name] StringStartsWithIgnoreCase 'apps/'
+     )
+    )
+  CONDITION
+}
