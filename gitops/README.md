@@ -44,7 +44,7 @@ uses.
 `apps/schmeide-app.yaml` applies the kustomization in `schmeide-app/`, outside `apps/` so the root Application does
 not also apply it as raw manifests:
 
-- Deployment `schmeide-app-api`: one replica, `Recreate`, `SCHMEIDE_BUILDS=admins`, environment from the
+- Deployment `schmeide-app-api`: one replica, `Recreate`, `SCHMEIDE_BUILDS=on`, environment from the
   `schmeide-app/schmeide-app` Secret, and an 8 GiB managed disk (`schmeide-app-data`) at `/data`, which also holds the
   claude CLI's `HOME`. Argo never prunes or deletes the disk; remove it by hand.
 - Service and Ingress for `https://api.schmeide.app`, certificate from the `letsencrypt` ClusterIssuer.
@@ -62,8 +62,8 @@ Stage 2 slice 1 (schmeide/schmeide.app `docs/stage2.md`) runs each agent run and
 `schmeide-builds`, and deploys built apps to one `tenant-<id>` namespace per business, all driven by the worker
 Deployment `schmeide-app-worker` (`schmeide-app/worker.yaml`), the API's image with `SCHMEIDE_ROLE=worker`.
 
-The worker runs with `SCHMEIDE_RUNNER=kubernetes` and `SCHMEIDE_BUILDS=on`; the API, with `SCHMEIDE_BUILDS=admins`,
-lets only platform admins start a build. The worker uses service account `schmeide-worker` with its token mounted,
+The worker runs with `SCHMEIDE_RUNNER=kubernetes` and `SCHMEIDE_BUILDS=on`; the API, also with `SCHMEIDE_BUILDS=on`,
+lets everyone start a build. The worker uses service account `schmeide-worker` with its token mounted,
 trusts the cluster CA through `NODE_EXTRA_CA_CERTS`, and starts Jobs from its own image: `SCHMEIDE_BUILD_IMAGE` is
 copied from the container's image by a kustomize `replacements` entry, so it follows the `images:` tag. Forgejo is
 reached at the defaults, `forgejo-http:3000` and `forgejo-ssh:22` in `forgejo`. At startup the worker checks its
