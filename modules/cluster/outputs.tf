@@ -39,3 +39,8 @@ output "cluster_ca_certificate" {
   value       = azurerm_kubernetes_cluster.this.kube_config[0].cluster_ca_certificate
   sensitive   = true
 }
+
+output "ingress_ip_address" {
+  description = "Static public IP Traefik's LoadBalancer Service is pinned to. DNS A records for the cluster point here."
+  value       = azurerm_public_ip.ingress.ip_address
+}

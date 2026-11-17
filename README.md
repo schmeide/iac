@@ -76,8 +76,8 @@ kubectl -n argocd port-forward svc/argo-cd-argocd-server 8080:443
 kubectl -n temporal port-forward svc/temporal-web 8081:8080
 ```
 
-`gitops/README.md` lists what is still a placeholder: the Forgejo and Temporal hostnames, the Forgejo admin email, the
-dynamic ingress IP, and the shared Postgres admin login.
+`gitops/README.md` lists what is still a placeholder: the Forgejo and Temporal hostnames, the Forgejo admin email, and
+the shared Postgres admin login.
 
 ## Layout
 
@@ -119,10 +119,26 @@ file that wires its module, as in autobutler-org/iac.
 
 - Foundry resources. One is created per tenant, by the platform, later.
 - A CDN or Front Door. The service is not chosen; see `modules/frontends/README.md`.
-- DNS zones. No domain is chosen for the platform or the sandbox apps.
+- An Azure DNS zone. `schmeide.app` stays at Porkbun; see "DNS" below.
 - Monitoring beyond what AKS needs to run.
 - Push identities for the registry and a deploy identity for frontend bundles. They belong to the platform's build and
   deploy steps, which do not exist yet.
+
+### DNS
+
+The `schmeide.app` zone is hosted at Porkbun (name servers `*.ns.porkbun.com`). The apex and `www` point at GitHub
+Pages, which serves the site in Stage 1, so the zone stays where it is and terraform manages no DNS.
+
+The cluster's one public name is `api.schmeide.app`. Traefik's LoadBalancer is pinned to the static IP
+`pip-schmeide-ingress` (in `schmeide-cluster`, created by `modules/cluster`), so the record does not move with
+redeploys. Adding it is a manual step for the owner, once, after the apply that creates the IP:
+
+1. `gmake init`, then `gmake output` and read `ingress_ip_address`.
+2. At Porkbun, add an `A` record: host `api`, answer that IP.
+3. Check it: `dig +short api.schmeide.app` returns the IP, and `dig +short schmeide.app` still returns GitHub Pages'
+   `185.199.108-111.153`.
+
+If the IP is ever replaced, the record has to be edited by hand; `prevent_destroy` on the IP is there to stop that.
 
 ## State
 

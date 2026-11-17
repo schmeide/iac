@@ -29,4 +29,5 @@ data "azurerm_client_config" "current" {}
 
 locals {
   control_identity_name = "id-${var.name}-control"
+  ingress_ip_name       = "pip-${var.name}-ingress"
 }

@@ -42,3 +42,8 @@ output "gitops_identity_client_id" {
   description = "Client id of the External Secrets workload identity. Not a secret."
   value       = azurerm_user_assigned_identity.gitops.client_id
 }
+
+output "ingress_ip_address" {
+  description = "Static public IP of Traefik, pip-schmeide-ingress in schmeide-cluster. The A record api.schmeide.app at Porkbun points here."
+  value       = module.cluster.ingress_ip_address
+}
