@@ -14,4 +14,4 @@ resources:
 images:
   - name: schmeide-app
     newName: schmeide.azurecr.io/schmeide-app
-    newTag: "626a428aa377562f39a97f25c5f9969feeb1e288"
+    newTag: "74b8d90049687133339fb601029c908f5756021a"
