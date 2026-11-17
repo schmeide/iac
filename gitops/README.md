@@ -132,8 +132,71 @@ namespace's pod security; bind any other role, or bind the deployer role to anyo
 Roles, pods or Jobs outside `schmeide-builds`; route an Ingress host outside `.apps.schmeide.com` or set a default
 backend. Admission policies match writes only; the worker's reads stop where its RBAC does.
 
-Still to come for slice 1: the `schmeide_provisioner` ExternalSecret and the worker's and the ACR Task's Azure
-identities. Until deploys land (schmeide/schmeide.app#194), every build ends in a deploy refusal.
+### Deploying built apps
+
+For deploys (schmeide/schmeide.app#194) the worker runs as Azure identity `id-schmeide-worker` through workload
+identity: its pod carries `azure.workload.identity/use: "true"`, and `azure/schmeide/worker.tf` federates
+`system:serviceaccount:schmeide-app:schmeide-worker`. The service account has no client-id annotation, because the
+repository commits no ids; terraform writes them to Key Vault `schmeide-app-worker-azure` as JSON, and ExternalSecret
+`schmeide-app-azure` expands it into the worker's environment (`envFrom`):
+
+| Env var | Value |
+| --- | --- |
+| `AZURE_CLIENT_ID` | `id-schmeide-worker`'s client id; the webhook keeps it and adds the tenant and token file |
+| `SCHMEIDE_AZURE_SUBSCRIPTION_ID`, `SCHMEIDE_ACR_RESOURCE_GROUP` | where registry `schmeide` lives |
+| `SCHMEIDE_ACR_RUN_IDENTITY`, `SCHMEIDE_ACR_RUN_IDENTITY_ID` | `id-schmeide-acr-run`'s client id and resource id |
+
+`worker.yaml` sets `SCHMEIDE_ACR_NAME`, `SCHMEIDE_ACR_LOGIN_SERVER`, `SCHMEIDE_APPS_DOMAIN` and
+`SCHMEIDE_APP_DATABASE_HOST` as literals, and `SCHMEIDE_PROVISIONER_URL` from Secret `schmeide-app-provisioner`.
+
+On the registry, `id-schmeide-worker` holds Container Registry Tasks Contributor and Container Registry Repository
+Contributor on `apps/*`. ACR quick runs in an ABAC registry push only as the caller, so the worker schedules runs with
+`credentials.sourceRegistry.identity: "[caller]"`; a user-assigned identity there is refused with
+`SourceRegistryIdentityLoginInvalid`. `id-schmeide-acr-run` (Repository Writer on `apps/*`, attached to the registry)
+is for an ACR Task, should a run ever need an identity other than the worker's. The kubelet pulls `apps/*` with its
+registry-wide Container Registry Repository Reader.
+
+### Tenant namespaces
+
+The worker creates every object in `tenant-<id>`; nothing here templates them. Its network policy, per
+schmeide/schmeide.app `docs/stage2.md`:
+
+- `default-deny`: `podSelector: {}`, `policyTypes: [Ingress, Egress]`.
+- Ingress from Traefik: `namespaceSelector` `kubernetes.io/metadata.name: traefik` with `podSelector`
+  `app.kubernetes.io/name: traefik`, TCP 8080 (the app's nginx port).
+- Egress to kube-dns: `namespaceSelector` `kubernetes.io/metadata.name: kube-system` with `podSelector`
+  `k8s-app: kube-dns`, UDP and TCP 53.
+- Egress to Postgres: `ipBlock` `10.16.16.0/24` (the delegated `postgres` subnet, `modules/network`), TCP 5432. Add
+  6432 if the server's built-in PgBouncer is turned on and apps connect through it.
+
+No internet egress. Cilium enforces these (`network_policy = "cilium"`).
+
+### The `schmeide_provisioner` login
+
+The worker creates each app's database and role as `schmeide_provisioner`, which has `CREATEDB` and `CREATEROLE` and
+nothing else. Terraform generates its password into Key Vault `schmeide-app-provisioner-password`, and ExternalSecret
+`schmeide-app-provisioner` builds key `url`:
+`postgres://schmeide_provisioner:<password>@psql-schmeide.postgres.database.azure.com:5432/postgres?sslmode=require`.
+
+The server is private, so the role is created from a one-off pod in `temporal`, whose `temporal-db` Secret holds the
+admin password. The provisioner password goes in on stdin, never on a command line or in the pod spec:
+
+```bash
+export KUBECONFIG=~/.kube/schmeide
+kubectl -n temporal run psql-once --image=postgres:17-alpine --restart=Never --overrides='{"spec":{"containers":[{
+  "name":"psql-once","image":"postgres:17-alpine","command":["sleep","900"],"env":[
+  {"name":"PGHOST","value":"psql-schmeide.postgres.database.azure.com"},{"name":"PGUSER","value":"schmeideadmin"},
+  {"name":"PGSSLMODE","value":"require"},{"name":"PGDATABASE","value":"postgres"},
+  {"name":"PGPASSWORD","valueFrom":{"secretKeyRef":{"name":"temporal-db","key":"password"}}}]}]}}'
+kubectl -n temporal wait --for=condition=Ready pod/psql-once
+{ az keyvault secret show --vault-name kv-schmeide --name schmeide-app-provisioner-password --query value -o tsv
+  echo "CREATE ROLE schmeide_provisioner LOGIN CREATEDB CREATEROLE PASSWORD :'pw';"
+} | kubectl -n temporal exec -i psql-once -- sh -c 'IFS= read -r pw; exec psql -v ON_ERROR_STOP=1 -v pw="$pw"'
+kubectl -n temporal delete pod psql-once
+```
+
+To rotate, bump `value_wo_version` on `azurerm_key_vault_secret.schmeide_provisioner_password`, merge, run the same
+with `ALTER ROLE schmeide_provisioner PASSWORD :'pw';`, force-sync the ExternalSecret and restart the worker.
 
 ## Apps domain
 
@@ -169,6 +232,8 @@ Terraform generates these and writes them to Key Vault with write-only arguments
 | `forgejo-admin-password` | Forgejo's `schmeide-admin` user | `forgejo/forgejo-admin` |
 | `schmeide-app-auth-secret` | schmeide.app API, `SCHMEIDE_AUTH_SECRET` | `schmeide-app/schmeide-app` |
 | `schmeide-app-postgres-password` | schmeide.app API, the password in `DATABASE_URL` | `schmeide-app/schmeide-app` |
+| `schmeide-app-provisioner-password` | the worker, in `SCHMEIDE_PROVISIONER_URL` | `schmeide-app/schmeide-app-provisioner` |
+| `schmeide-app-worker-azure` (ids, not secret) | the worker's Azure ids | `schmeide-app/schmeide-app-azure` |
 
 A person sets these by hand, because their values come from outside and this repo is public:
 
