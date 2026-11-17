@@ -8,9 +8,10 @@ resources:
   - pvc.yaml
   - migrate-job.yaml
   - deployment.yaml
+  - worker.yaml
   - service.yaml
   - ingress.yaml
 images:
   - name: schmeide-app
     newName: schmeide.azurecr.io/schmeide-app
-    newTag: "36dc7c41cb22085a0500a71c3448c2db09fe3cd3"
+    newTag: "638469efe180169c1fb9c6dd3b9712d4a8e60d26"
