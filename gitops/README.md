@@ -97,8 +97,8 @@ before the grants, so the worker never holds them unconfined.
 What the worker cannot do: anything in `schmeide-app`, `argocd`, `temporal`, `forgejo` or another platform namespace,
 including reading their Secrets; create, relabel or delete a namespace not named `tenant-*`, or relax a tenant
 namespace's pod security; bind any other role, or bind the deployer role to anyone else; create service accounts,
-Roles, pods or Jobs outside `schmeide-builds`. Admission policies match writes only; the worker's reads stop where its
-RBAC does.
+Roles, pods or Jobs outside `schmeide-builds`; route an Ingress host outside `.apps.schmeide.com` or set a default
+backend. Admission policies match writes only; the worker's reads stop where its RBAC does.
 
 Still to come for slice 1: the worker Deployment, the `anthropic-builds`, Forgejo token and `schmeide_provisioner`
 ExternalSecrets, the worker's and the ACR Task's Azure identities, and the `postgres:18-alpine` import.

@@ -87,6 +87,17 @@ spec:
         )
       message: the schmeide worker may only bind ClusterRole schmeide-tenant-deployer to itself
       reason: Forbidden
+    # Traefik serves any host an Ingress names, so a worker bug could otherwise claim
+    # api.schmeide.app or another tenant's address. Built apps live under apps.schmeide.com only.
+    - expression: >-
+        request.resource.resource != 'ingresses' || request.operation == 'DELETE' || (
+          (!has(object.spec.rules) || object.spec.rules.all(r, has(r.host) && r.host.endsWith('.apps.schmeide.com')))
+          && (!has(object.spec.tls) || object.spec.tls.all(t, !has(t.hosts)
+            || t.hosts.all(h, h.endsWith('.apps.schmeide.com'))))
+          && !has(object.spec.defaultBackend)
+        )
+      message: the schmeide worker may only route hosts under .apps.schmeide.com, with no default backend
+      reason: Forbidden
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding
