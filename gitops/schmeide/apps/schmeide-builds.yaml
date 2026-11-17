@@ -1,6 +1,6 @@
 # The namespace agent and checks Jobs run in, one pod per build at a time
-# (schmeide/schmeide.app docs/stage2.md, "Agent runs" and "Checks"). Dormant until the
-# worker runs with SCHMEIDE_RUNNER=kubernetes; nothing here runs a pod.
+# (schmeide/schmeide.app docs/stage2.md, "Agent runs" and "Checks"), started by the worker
+# (SCHMEIDE_RUNNER=kubernetes); nothing here runs a pod.
 #
 # Build pods run code an agent wrote, so: restricted pod security, no Role for the default
 # service account, and default-deny network policy with only the egress slice 1 needs.
@@ -13,6 +13,28 @@ metadata:
     pod-security.kubernetes.io/enforce: restricted
   annotations:
     argocd.argoproj.io/sync-wave: "0"
+---
+# The model key build pods use: a key of its own, in its own Anthropic Console workspace with a
+# spend limit, never the platform's. Only here, so build pods get it and nothing else of the
+# platform's. Set by hand (gitops/README.md, "Builds and the worker").
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: anthropic-builds
+  namespace: schmeide-builds
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: schmeide
+  target:
+    name: anthropic-builds
+  data:
+    - secretKey: key
+      remoteRef:
+        key: schmeide-builds-anthropic-api-key
 ---
 # The cluster-wide cap on builds. One build holds one pod at a time, 1.1 CPU and 2.25 GiB
 # (agent or checks plus the Postgres sidecar), so 3.5 CPU is three builds. A Job whose pod

@@ -1,5 +1,6 @@
-# The schmeide.app API. Stage 1: it plans apps and writes proposals, and builds nothing
-# (SCHMEIDE_BUILDS=off). The site stays on GitHub Pages at https://schmeide.app.
+# The schmeide.app API. It plans apps and writes proposals; only platform admins may build
+# (SCHMEIDE_BUILDS=admins), which the worker (worker.yaml) does. The site stays on GitHub Pages
+# at https://schmeide.app.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -51,8 +52,9 @@ spec:
             # HTTP only: schmeide-app-worker (worker.yaml) runs the Temporal worker.
             - name: SCHMEIDE_ROLE
               value: api
+            # Platform admins build; everyone else gets what builds off answers.
             - name: SCHMEIDE_BUILDS
-              value: "off"
+              value: admins
             - name: SCHMEIDE_HOST
               value: 0.0.0.0
             - name: PORT
