@@ -25,6 +25,11 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: schmeide-app-worker
+        # Azure Workload Identity projects a token for id-schmeide-worker (azure/schmeide/worker.tf)
+        # and sets AZURE_TENANT_ID, AZURE_FEDERATED_TOKEN_FILE and AZURE_AUTHORITY_HOST. The
+        # service account carries no client-id annotation, since the repo does not commit ids;
+        # AZURE_CLIENT_ID comes from schmeide-app-azure below, and the webhook keeps it.
+        azure.workload.identity/use: "true"
     spec:
       # Its rights are in apps/schmeide-worker.yaml. The token is what it calls the Kubernetes API
       # with, to run build Jobs.
@@ -107,6 +112,28 @@ spec:
                 secretKeyRef:
                   name: schmeide-app-forgejo
                   key: token
+            # Deploys (schmeide/schmeide.app#194): images built by ACR runs into apps/*, apps
+            # served at <host>.apps.schmeide.com, one database per copy on the shared server.
+            - name: SCHMEIDE_ACR_NAME
+              value: schmeide
+            - name: SCHMEIDE_ACR_LOGIN_SERVER
+              value: schmeide.azurecr.io
+            - name: SCHMEIDE_APPS_DOMAIN
+              value: apps.schmeide.com
+            - name: SCHMEIDE_APP_DATABASE_HOST
+              value: psql-schmeide.postgres.database.azure.com
+            # schmeide_provisioner (CREATEDB, CREATEROLE) on database postgres.
+            - name: SCHMEIDE_PROVISIONER_URL
+              valueFrom:
+                secretKeyRef:
+                  name: schmeide-app-provisioner
+                  key: url
+          # AZURE_CLIENT_ID, SCHMEIDE_AZURE_SUBSCRIPTION_ID, SCHMEIDE_ACR_RESOURCE_GROUP,
+          # SCHMEIDE_ACR_RUN_IDENTITY (client id) and SCHMEIDE_ACR_RUN_IDENTITY_ID (resource id),
+          # from terraform through Key Vault (apps/schmeide-app-secrets.yaml).
+          envFrom:
+            - secretRef:
+                name: schmeide-app-azure
           volumeMounts:
             - name: data
               mountPath: /data
