@@ -35,3 +35,17 @@ spec:
       - CreateNamespace=true
       # The CRDs are larger than the last-applied-configuration annotation allows.
       - ServerSideApply=true
+      # Without this, a sync would strip what ignoreDifferences below leaves to others.
+      - RespectIgnoreDifferences=true
+  # Two writers other than Argo CD change the webhook after it is applied. cainjector fills
+  # in caBundle. AKS's admissions enforcer appends two namespaceSelector expressions, so no
+  # third-party webhook sees AKS-managed namespaces. Neither is in the chart, so without
+  # this the app is OutOfSync forever. Annotating the webhook admissions.enforcer/disabled
+  # would also clear the diff, but would switch that protection off.
+  ignoreDifferences:
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      name: cert-manager-webhook
+      jqPathExpressions:
+        - .webhooks[].clientConfig.caBundle
+        - .webhooks[].namespaceSelector.matchExpressions[] | select(.key == "control-plane" or .key == "kubernetes.azure.com/managedby")
