@@ -17,7 +17,8 @@ Argo CD and External Secrets are installed from the root module, `azure/schmeide
   Secrets.
 - **User pool**: `Standard_D4as_v6`, autoscaled from 1 to 2. Everything else runs here.
 - **Ingress IP**: a static Standard public IP, `pip-<name>-ingress`, in the cluster's resource group. Traefik's
-  Service names it in `gitops/schmeide/traefik/values.yaml`; the control-plane identity has Network Contributor on it.
+  Service names it in `gitops/schmeide/traefik/values.yaml`; the control-plane identity has Network Contributor on
+  the cluster's resource group, because the cloud provider lists public IPs at that level.
 - **Registry**: the kubelet identity gets Container Registry Repository Reader on the registry, which is the pull role
   in ABAC repository mode.
 
@@ -31,9 +32,9 @@ scale-up that would pass the quota, so a pool stuck below its maximum is the sym
 ## Before the first apply
 
 `./bootstrap/github-oidc.bash create` must have run. The CI identity is a Contributor, which cannot write role
-assignments, and this module makes five (Network Contributor on the node subnet and on the ingress IP, Repository
-Reader on the registry, Cluster User and RBAC Cluster Admin on the cluster). The script grants Role Based Access
-Control Administrator limited to exactly those roles.
+assignments, and this module makes five (Network Contributor on the node subnet and on the cluster's resource group
+for the ingress IP, Repository Reader on the registry, Cluster User and RBAC Cluster Admin on the cluster). The script
+grants Role Based Access Control Administrator limited to exactly those roles.
 
 ## Key Vault
 
