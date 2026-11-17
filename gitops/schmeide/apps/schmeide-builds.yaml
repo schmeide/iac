@@ -1,0 +1,117 @@
+# The namespace agent and checks Jobs run in, one pod per build at a time
+# (schmeide/schmeide.app docs/stage2.md, "Agent runs" and "Checks"). Dormant until the
+# worker runs with SCHMEIDE_RUNNER=kubernetes; nothing here runs a pod.
+#
+# Build pods run code an agent wrote, so: restricted pod security, no Role for the default
+# service account, and default-deny network policy with only the egress slice 1 needs.
+# The worker's rights here are in schmeide-worker.yaml.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: schmeide-builds
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+---
+# The cluster-wide cap on builds. One build holds one pod at a time, 1.1 CPU and 2.25 GiB
+# (agent or checks plus the Postgres sidecar), so 3.5 CPU is three builds. A Job whose pod
+# would exceed it waits; the worker keeps heartbeating. With the platform's ~0.9 CPU
+# (API and worker included) that needs the second user node, which the autoscaler adds.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: builds
+  namespace: schmeide-builds
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  hard:
+    requests.cpu: 3500m
+    requests.memory: 7Gi
+    limits.memory: 14Gi
+    pods: "10"
+---
+# The quota needs every container to state memory; these fill in what a pod leaves out.
+# The max is the agent container's own limit (2 CPU, 4 GiB).
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: builds
+  namespace: schmeide-builds
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  limits:
+    - type: Container
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi
+      default:
+        cpu: "1"
+        memory: 512Mi
+      max:
+        cpu: "2"
+        memory: 4Gi
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: schmeide-builds
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# Slice 1 egress: DNS, Forgejo SSH (clone and push), and 443 to the internet except
+# private ranges (pods, nodes, services, the Postgres subnet), link-local (instance
+# metadata) and the Azure wire server. Slice 3 (schmeide/iac#35) narrows 443 to an FQDN
+# allow-list.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: build-egress
+  namespace: schmeide-builds
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # The forgejo-ssh Service listens on 22; policy sees the pod's port, 2222.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: forgejo
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: forgejo
+      ports:
+        - protocol: TCP
+          port: 2222
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 169.254.0.0/16
+              - 168.63.129.16/32
+      ports:
+        - protocol: TCP
+          port: 443

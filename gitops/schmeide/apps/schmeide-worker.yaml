@@ -1,0 +1,202 @@
+# The Kubernetes rights of the schmeide.app worker (schmeide/schmeide.app docs/stage2.md,
+# "Worker RBAC without cluster-wide power"). Only the service account and its rights: the
+# worker Deployment that uses it comes with SCHMEIDE_ROLE (schmeide/schmeide.app#192).
+# The API keeps automountServiceAccountToken: false and no service account of its own.
+#
+# The worker can:
+#   - in schmeide-builds: run Jobs, read their pods and logs, and create, read and delete
+#     Secrets (a run's prompt and deploy key);
+#   - create, label and delete namespaces named tenant-* that carry the tenant label and
+#     enforce restricted pod security, and bind schmeide-tenant-deployer, and nothing
+#     else, to itself in them; the deployer role then covers the app objects there.
+# It has no rights in any other namespace, so it cannot read Argo CD's, Temporal's or the
+# API's Secrets. The admission policy below enforces the tenant-* conditions, since RBAC
+# cannot match a namespace by name or label.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: schmeide-worker
+  namespace: schmeide-app
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+---
+# Wave 0, before any grant at wave 1, so the worker never holds its cluster-wide namespace
+# rights without the policy that confines them.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: schmeide-worker-tenants-only
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["*"]
+        operations: [CREATE, UPDATE, DELETE]
+        resources: [namespaces, secrets, services, resourcequotas, limitranges]
+      - apiGroups: [apps]
+        apiVersions: ["*"]
+        operations: [CREATE, UPDATE, DELETE]
+        resources: [deployments]
+      - apiGroups: [networking.k8s.io]
+        apiVersions: ["*"]
+        operations: [CREATE, UPDATE, DELETE]
+        resources: [ingresses, networkpolicies]
+      - apiGroups: [rbac.authorization.k8s.io]
+        apiVersions: ["*"]
+        operations: [CREATE, UPDATE, DELETE]
+        resources: [rolebindings]
+  matchConditions:
+    - name: is-worker
+      expression: request.userInfo.username == 'system:serviceaccount:schmeide-app:schmeide-worker'
+  variables:
+    # The namespace the request is about: the Namespace itself (as it will be, or as it
+    # was on delete), or the one a namespaced object lives in.
+    - name: ns
+      expression: >-
+        request.resource.resource == 'namespaces'
+        ? dyn(request.operation == 'DELETE' ? oldObject : object)
+        : dyn(namespaceObject)
+    # A run's prompt and deploy key, which the worker's Role in schmeide-builds allows.
+    - name: buildSecret
+      expression: request.namespace == 'schmeide-builds' && request.resource.resource == 'secrets'
+  validations:
+    - expression: >-
+        variables.buildSecret || (
+          variables.ns != null
+          && variables.ns.metadata.name.startsWith('tenant-')
+          && has(variables.ns.metadata.labels)
+          && 'schmeide.app/tenant' in variables.ns.metadata.labels
+          && 'pod-security.kubernetes.io/enforce' in variables.ns.metadata.labels
+          && variables.ns.metadata.labels['pod-security.kubernetes.io/enforce'] == 'restricted'
+        )
+      messageExpression: >-
+        'the schmeide worker may only touch namespaces named tenant-* with the schmeide.app/tenant label and
+        pod-security.kubernetes.io/enforce=restricted, not ' + (variables.ns == null ? 'a cluster-scoped object' :
+        variables.ns.metadata.name)
+      reason: Forbidden
+    - expression: >-
+        request.resource.resource != 'rolebindings' || request.operation == 'DELETE' || (
+          object.roleRef.kind == 'ClusterRole'
+          && object.roleRef.name == 'schmeide-tenant-deployer'
+          && has(object.subjects)
+          && object.subjects.all(s, s.kind == 'ServiceAccount' && s.name == 'schmeide-worker'
+            && s.namespace == 'schmeide-app')
+        )
+      message: the schmeide worker may only bind ClusterRole schmeide-tenant-deployer to itself
+      reason: Forbidden
+    # Traefik serves any host an Ingress names, so a worker bug could otherwise claim
+    # api.schmeide.app or another tenant's address. Built apps live under apps.schmeide.com only.
+    - expression: >-
+        request.resource.resource != 'ingresses' || request.operation == 'DELETE' || (
+          (!has(object.spec.rules) || object.spec.rules.all(r, has(r.host) && r.host.endsWith('.apps.schmeide.com')))
+          && (!has(object.spec.tls) || object.spec.tls.all(t, !has(t.hosts)
+            || t.hosts.all(h, h.endsWith('.apps.schmeide.com'))))
+          && !has(object.spec.defaultBackend)
+        )
+      message: the schmeide worker may only route hosts under .apps.schmeide.com, with no default backend
+      reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: schmeide-worker-tenants-only
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  policyName: schmeide-worker-tenants-only
+  validationActions: [Deny]
+---
+# What the worker may do inside a tenant namespace, once it has bound this role there: one
+# Deployment, Service, Ingress and DATABASE_URL Secret per app, and the namespace's quota,
+# defaults and network policy. Bound only by RoleBindings, never cluster-wide.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: schmeide-tenant-deployer
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+rules:
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [get, list, watch, create, update, patch, delete, deletecollection]
+  - apiGroups: [""]
+    resources: [services, secrets, resourcequotas, limitranges]
+    verbs: [get, list, watch, create, update, patch, delete, deletecollection]
+  - apiGroups: [networking.k8s.io]
+    resources: [ingresses, networkpolicies]
+    verbs: [get, list, watch, create, update, patch, delete, deletecollection]
+---
+# Cluster-scoped, so it is a ClusterRole; the admission policy above confines it to tenant-*
+# namespaces. `bind` is what lets the worker create a RoleBinding to a role whose rights it
+# does not hold yet, and only for schmeide-tenant-deployer.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: schmeide-worker
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+rules:
+  - apiGroups: [""]
+    resources: [namespaces]
+    verbs: [get, create, patch, update, delete]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [rolebindings]
+    verbs: [create, patch, update]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [clusterroles]
+    resourceNames: [schmeide-tenant-deployer]
+    verbs: [bind]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: schmeide-worker
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: schmeide-worker
+subjects:
+  - kind: ServiceAccount
+    name: schmeide-worker
+    namespace: schmeide-app
+---
+# Agent and checks Jobs, their pods and logs, and each run's Secret, as docs/stage2.md
+# lists. Nothing for schmeide-builds' own default service account.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: schmeide-worker
+  namespace: schmeide-builds
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+rules:
+  - apiGroups: [batch]
+    resources: [jobs]
+    verbs: [create, get, list, watch, delete]
+  - apiGroups: [""]
+    resources: [pods, pods/log]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [create, get, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: schmeide-worker
+  namespace: schmeide-builds
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: schmeide-worker
+subjects:
+  - kind: ServiceAccount
+    name: schmeide-worker
+    namespace: schmeide-app
