@@ -29,6 +29,8 @@ Besides the Applications, `apps/` holds:
   certificate; see "Apps domain" below.
 - `temporal-secrets.yaml`, `forgejo-secrets.yaml`, `schmeide-app-secrets.yaml`: the namespaces, and ExternalSecrets
   that project secrets from the platform Key Vault through the `schmeide` ClusterSecretStore.
+- `schmeide-builds.yaml` and `schmeide-worker.yaml`: the namespace build Jobs run in and the worker's Kubernetes
+  rights; see "Builds and the worker" below.
 
 Traefik is the ingress controller because ingress-nginx was retired upstream in March 2026. Its Service uses
 `externalTrafficPolicy: Local`, so Traefik sees the caller's address and puts it in `X-Forwarded-For`; the
@@ -49,9 +51,57 @@ not also apply it as raw manifests:
 - Job `schmeide-app-migrate`, a PreSync hook running `node src/migrate.ts`. If it fails the sync stops before the
   Deployment changes. It needs the `schmeide_app` login below.
 
-Sync waves order the first sync: namespaces and the two Applications that bring CRDs (cert-manager, Traefik) at 0,
-the ClusterIssuers and ExternalSecrets at 1, Temporal and Forgejo at 2, the schmeide.app API at 3, and the apps
+Sync waves order the first sync: namespaces, the two Applications that bring CRDs (cert-manager, Traefik), and the
+worker's admission policy at 0, the ClusterIssuers, ExternalSecrets, and the `schmeide-builds` and worker RBAC objects
+at 1, Temporal and Forgejo at 2, the schmeide.app API at 3, and the apps
 wildcard Certificate at 4.
+
+## Builds and the worker
+
+Stage 2 slice 1 (schmeide/schmeide.app `docs/stage2.md`) runs each agent run and each round of checks as a Job in
+`schmeide-builds`, and deploys built apps to one `tenant-<id>` namespace per business, all driven by a worker
+Deployment of the API's image (`SCHMEIDE_ROLE=worker`, schmeide/schmeide.app#192). That Deployment is not here yet, so
+everything below is dormant: nothing holds the `schmeide-worker` token and no pod runs in `schmeide-builds`.
+
+`apps/schmeide-builds.yaml`:
+
+- Namespace `schmeide-builds` with `pod-security.kubernetes.io/enforce: restricted`. Its default service account has
+  no Role; build pods also set `automountServiceAccountToken: false`.
+- ResourceQuota `builds`: `requests.cpu: 3500m` (three builds of 1.1 CPU), `requests.memory: 7Gi`,
+  `limits.memory: 14Gi`, `pods: 10`. A Job whose pod would exceed it waits. With the platform's ~0.9 CPU that needs
+  the second user node, which the autoscaler adds.
+- LimitRange `builds`: defaults for a container that states nothing (request 100m and 128 MiB, limit 1 CPU and
+  512 MiB) and a maximum of the agent's own limit, 2 CPU and 4 GiB.
+- NetworkPolicy `default-deny` both ways, and `build-egress`: kube-dns on 53, the Forgejo pod's SSH port (2222, behind
+  the `forgejo-ssh` Service's 22), and TCP 443 to `0.0.0.0/0` except `10.0.0.0/8`, `172.16.0.0/12`,
+  `192.168.0.0/16`, `169.254.0.0/16` and `168.63.129.16/32`. Slice 3 (#35) narrows 443 to an FQDN allow-list.
+
+`apps/schmeide-worker.yaml` gives service account `schmeide-app/schmeide-worker`:
+
+| Object | Grants |
+| --- | --- |
+| Role and RoleBinding `schmeide-worker` in `schmeide-builds` | `jobs`: create, get, list, watch, delete. `pods`, `pods/log`: get, list, watch. `secrets`: create, get, delete |
+| ClusterRole and ClusterRoleBinding `schmeide-worker` | `namespaces`: get, create, patch, update, delete. `rolebindings`: create, patch, update. `bind` on ClusterRole `schmeide-tenant-deployer` only |
+| ClusterRole `schmeide-tenant-deployer`, never bound cluster-wide | Deployments, Services, Ingresses, Secrets, ResourceQuotas, LimitRanges, NetworkPolicies: read and write |
+
+On a business's first deploy the worker creates `tenant-<id>` and binds `schmeide-tenant-deployer` to itself there,
+which is the only way it gets rights in that namespace.
+
+RBAC cannot match a namespace by name or label, so ValidatingAdmissionPolicy `schmeide-worker-tenants-only` and its
+binding (`admissionregistration.k8s.io/v1`, GA since Kubernetes 1.30) refuse the worker's create, update and delete
+of namespaces, RoleBindings, and the deployer role's kinds unless the namespace is named `tenant-*`, carries the
+`schmeide.app/tenant` label, and enforces `restricted`; Secrets in `schmeide-builds` are the one exception. A
+RoleBinding must bind ClusterRole `schmeide-tenant-deployer` to the worker and nobody else. The policy syncs a wave
+before the grants, so the worker never holds them unconfined.
+
+What the worker cannot do: anything in `schmeide-app`, `argocd`, `temporal`, `forgejo` or another platform namespace,
+including reading their Secrets; create, relabel or delete a namespace not named `tenant-*`, or relax a tenant
+namespace's pod security; bind any other role, or bind the deployer role to anyone else; create service accounts,
+Roles, pods or Jobs outside `schmeide-builds`. Admission policies match writes only; the worker's reads stop where its
+RBAC does.
+
+Still to come for slice 1: the worker Deployment, the `anthropic-builds`, Forgejo token and `schmeide_provisioner`
+ExternalSecrets, the worker's and the ACR Task's Azure identities, and the `postgres:18-alpine` import.
 
 ## Apps domain
 
