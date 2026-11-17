@@ -7,7 +7,7 @@ per chart, so the directory sync does not apply them as manifests.
 `schmeide/iac` is public, so Argo clones it with no repository credential.
 
 Reach the Argo CD UI with `kubectl -n argocd port-forward svc/argo-cd-argocd-server 8080:443`. The admin password is
-in the `argocd-initial-admin-secret` Secret. There is no public hostname, because no domain is chosen.
+in the `argocd-initial-admin-secret` Secret. There is no public hostname for it.
 
 ## What Argo installs
 
@@ -51,7 +51,6 @@ Each is marked `PLACEHOLDER` in the file.
 | Postgres login for Temporal and Forgejo | `temporal/values.yaml`, `forgejo/values.yaml`, `apps/*-secrets.yaml` | Both use the admin login for now. A dedicated login per service needs a role created inside Postgres, which terraform cannot reach from CI on a private server. |
 | Forgejo hostname | `forgejo/values.yaml` (`DOMAIN`, `ROOT_URL`, `ingress.hosts`, `ingress.tls`) | A name on the platform domain, once chosen. Then set `ingress.enabled: true`. |
 | Forgejo admin email | `forgejo/values.yaml` (`gitea.admin.email`) | An address on the platform domain. |
-| Ingress public IP | `traefik/values.yaml` | Dynamic for now. Reserve a static IP when DNS records point at it. |
 | Temporal UI hostname | `temporal/values.yaml` | None yet; the UI is reached with `kubectl port-forward`. |
 
 The `.invalid` names never resolve, so nothing is issued or exposed until they are replaced.

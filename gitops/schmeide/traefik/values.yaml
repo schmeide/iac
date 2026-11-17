@@ -1,9 +1,8 @@
 # Values for Traefik, https://traefik.github.io/charts.
 # https://github.com/traefik/traefik-helm-chart/blob/v42.4.0/traefik/values.yaml
 #
-# The chart's defaults are what this needs: one Deployment, a LoadBalancer Service that
-# AKS gives a public IP, and the Kubernetes Ingress provider. The public IP is dynamic.
-# Reserve a static one when DNS names point at it; see gitops/README.md.
+# The chart's defaults are what this needs: one Deployment, a LoadBalancer Service, and
+# the Kubernetes Ingress provider.
 
 # Named explicitly because cert-manager's HTTP-01 solver in apps/cluster-issuer.yaml and
 # every Ingress refer to the class by this name.
@@ -11,3 +10,11 @@ ingressClass:
   enabled: true
   isDefaultClass: true
   name: traefik
+
+# Pins the LoadBalancer to the static IP terraform creates in modules/cluster/network.tf
+# (output ingress_ip_address), which api.schmeide.app points at. The names must match
+# that resource: pip-<cluster name>-ingress in the cluster's resource group.
+service:
+  annotations:
+    service.beta.kubernetes.io/azure-load-balancer-resource-group: schmeide-cluster
+    service.beta.kubernetes.io/azure-pip-name: pip-schmeide-ingress
