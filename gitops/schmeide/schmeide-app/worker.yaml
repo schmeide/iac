@@ -1,6 +1,11 @@
 # The schmeide.app Temporal worker (schmeide/schmeide.app#192, SCHMEIDE_ROLE=worker): spec
-# writing, build summaries, deletes, and later builds. It serves only /healthz, for probes, so
-# it has no Service or Ingress.
+# writing, build summaries, deletes, and builds. It serves only /healthz, for probes, so it has
+# no Service or Ingress.
+#
+# Builds run in Kubernetes mode (SCHMEIDE_RUNNER=kubernetes, schmeide/schmeide.app#204/#205):
+# the agent and the checks run as Jobs in schmeide-builds and code lives on Forgejo. At startup
+# the worker checks its Forgejo token, its rights in schmeide-builds and the anthropic-builds
+# Secret, and exits naming whatever is missing.
 #
 # It shares the API's ReadWriteOnce disk until uploads move to Blob storage (slice 2, #195):
 # deletes remove uploads the API wrote, and claude keeps its config under /data. A ReadWriteOnce
@@ -21,8 +26,10 @@ spec:
       labels:
         app.kubernetes.io/name: schmeide-app-worker
     spec:
-      # Until builds run as Kubernetes Jobs (#193), the worker needs no Kubernetes API access.
-      automountServiceAccountToken: false
+      # Its rights are in apps/schmeide-worker.yaml. The token is what it calls the Kubernetes API
+      # with, to run build Jobs.
+      serviceAccountName: schmeide-worker
+      automountServiceAccountToken: true
       terminationGracePeriodSeconds: 60
       affinity:
         podAffinity:
@@ -48,8 +55,23 @@ spec:
           env:
             - name: SCHMEIDE_ROLE
               value: worker
+            # The API (deployment.yaml) decides who may build, admins only for now; the worker
+            # builds whatever reaches it.
             - name: SCHMEIDE_BUILDS
-              value: "off"
+              value: "on"
+            - name: SCHMEIDE_RUNNER
+              value: kubernetes
+            # Build Jobs run the worker's own image. The placeholder is replaced with this
+            # container's image, after the kustomization's images: tag, by the replacement in
+            # kustomization.yaml.
+            - name: SCHMEIDE_BUILD_IMAGE
+              value: schmeide-app
+            # fetch trusts the cluster's CA for the Kubernetes API through this.
+            - name: NODE_EXTRA_CA_CERTS
+              value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+            # SCHMEIDE_FORGEJO_URL and SCHMEIDE_FORGEJO_SSH default to the forgejo-http (3000) and
+            # forgejo-ssh (22) Services in the forgejo namespace, and the build Postgres sidecar to
+            # schmeide.azurecr.io/mirror/postgres:18-alpine.
             - name: SCHMEIDE_HOST
               value: 0.0.0.0
             - name: PORT
@@ -79,6 +101,12 @@ spec:
                 secretKeyRef:
                   name: schmeide-app
                   key: ANTHROPIC_API_KEY
+            # The schmeide-platform Forgejo user's token, in a Secret the API never loads.
+            - name: SCHMEIDE_FORGEJO_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: schmeide-app-forgejo
+                  key: token
           volumeMounts:
             - name: data
               mountPath: /data

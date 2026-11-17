@@ -44,7 +44,7 @@ uses.
 `apps/schmeide-app.yaml` applies the kustomization in `schmeide-app/`, outside `apps/` so the root Application does
 not also apply it as raw manifests:
 
-- Deployment `schmeide-app-api`: one replica, `Recreate`, `SCHMEIDE_BUILDS=off`, environment from the
+- Deployment `schmeide-app-api`: one replica, `Recreate`, `SCHMEIDE_BUILDS=admins`, environment from the
   `schmeide-app/schmeide-app` Secret, and an 8 GiB managed disk (`schmeide-app-data`) at `/data`, which also holds the
   claude CLI's `HOME`. Argo never prunes or deletes the disk; remove it by hand.
 - Service and Ingress for `https://api.schmeide.app`, certificate from the `letsencrypt` ClusterIssuer.
@@ -59,9 +59,41 @@ wildcard Certificate at 4.
 ## Builds and the worker
 
 Stage 2 slice 1 (schmeide/schmeide.app `docs/stage2.md`) runs each agent run and each round of checks as a Job in
-`schmeide-builds`, and deploys built apps to one `tenant-<id>` namespace per business, all driven by a worker
-Deployment of the API's image (`SCHMEIDE_ROLE=worker`, schmeide/schmeide.app#192). That Deployment is not here yet, so
-everything below is dormant: nothing holds the `schmeide-worker` token and no pod runs in `schmeide-builds`.
+`schmeide-builds`, and deploys built apps to one `tenant-<id>` namespace per business, all driven by the worker
+Deployment `schmeide-app-worker` (`schmeide-app/worker.yaml`), the API's image with `SCHMEIDE_ROLE=worker`.
+
+The worker runs with `SCHMEIDE_RUNNER=kubernetes` and `SCHMEIDE_BUILDS=on`; the API, with `SCHMEIDE_BUILDS=admins`,
+lets only platform admins start a build. The worker uses service account `schmeide-worker` with its token mounted,
+trusts the cluster CA through `NODE_EXTRA_CA_CERTS`, and starts Jobs from its own image: `SCHMEIDE_BUILD_IMAGE` is
+copied from the container's image by a kustomize `replacements` entry, so it follows the `images:` tag. Forgejo is
+reached at the defaults, `forgejo-http:3000` and `forgejo-ssh:22` in `forgejo`. At startup the worker checks its
+Forgejo token, its rights in `schmeide-builds` and the `anthropic-builds` Secret, and exits naming whatever is missing,
+so `kubectl -n schmeide-app logs deploy/schmeide-app-worker` says what to fix.
+
+Two Key Vault secrets are set by hand before the worker can start:
+
+| Key Vault secret | Kubernetes Secret | Read by |
+| --- | --- | --- |
+| `schmeide-app-forgejo-token` | `schmeide-app/schmeide-app-forgejo`, key `token` | the worker, as `SCHMEIDE_FORGEJO_TOKEN` |
+| `schmeide-builds-anthropic-api-key` | `schmeide-builds/anthropic-builds`, key `key` | build pods |
+
+The Forgejo token belongs to a `schmeide-platform` user:
+
+```bash
+kubectl -n forgejo exec deploy/forgejo -c forgejo -- forgejo admin user create \
+  --username schmeide-platform --email schmeide-platform@schmeide.invalid --random-password \
+  --must-change-password=false
+kubectl -n forgejo exec deploy/forgejo -c forgejo -- forgejo admin user generate-access-token \
+  --username schmeide-platform --token-name schmeide-worker \
+  --scopes write:organization,write:repository,read:user --raw \
+  | az keyvault secret set --vault-name kv-schmeide --name schmeide-app-forgejo-token --file /dev/stdin
+```
+
+The builds model key is its own key, from its own Anthropic Console workspace with a spend limit:
+
+```bash
+az keyvault secret set --vault-name kv-schmeide --name schmeide-builds-anthropic-api-key --file /dev/stdin
+```
 
 `apps/schmeide-builds.yaml`:
 
@@ -100,8 +132,8 @@ namespace's pod security; bind any other role, or bind the deployer role to anyo
 Roles, pods or Jobs outside `schmeide-builds`; route an Ingress host outside `.apps.schmeide.com` or set a default
 backend. Admission policies match writes only; the worker's reads stop where its RBAC does.
 
-Still to come for slice 1: the worker Deployment, the `anthropic-builds`, Forgejo token and `schmeide_provisioner`
-ExternalSecrets, the worker's and the ACR Task's Azure identities, and the `postgres:18-alpine` import.
+Still to come for slice 1: the `schmeide_provisioner` ExternalSecret and the worker's and the ACR Task's Azure
+identities. Until deploys land (schmeide/schmeide.app#194), every build ends in a deploy refusal.
 
 ## Apps domain
 

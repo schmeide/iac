@@ -1,6 +1,6 @@
 # The Kubernetes rights of the schmeide.app worker (schmeide/schmeide.app docs/stage2.md,
 # "Worker RBAC without cluster-wide power"). Only the service account and its rights: the
-# worker Deployment that uses it comes with SCHMEIDE_ROLE (schmeide/schmeide.app#192).
+# worker Deployment that uses it is schmeide-app/worker.yaml.
 # The API keeps automountServiceAccountToken: false and no service account of its own.
 #
 # The worker can:

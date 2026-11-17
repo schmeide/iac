@@ -15,3 +15,16 @@ images:
   - name: schmeide-app
     newName: schmeide.azurecr.io/schmeide-app
     newTag: "74b8d90049687133339fb601029c908f5756021a"
+# The worker starts build Jobs from its own image, so SCHMEIDE_BUILD_IMAGE follows the tag above.
+# Replacements run after images:, so this copies the full schmeide.azurecr.io/schmeide-app:<sha>.
+replacements:
+  - source:
+      kind: Deployment
+      name: schmeide-app-worker
+      fieldPath: spec.template.spec.containers.[name=worker].image
+    targets:
+      - select:
+          kind: Deployment
+          name: schmeide-app-worker
+        fieldPaths:
+          - spec.template.spec.containers.[name=worker].env.[name=SCHMEIDE_BUILD_IMAGE].value
