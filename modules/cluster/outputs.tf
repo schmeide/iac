@@ -44,3 +44,8 @@ output "ingress_ip_address" {
   description = "Static public IP Traefik's LoadBalancer Service is pinned to. DNS A records for the cluster point here."
   value       = azurerm_public_ip.ingress.ip_address
 }
+
+output "ingress_ip_id" {
+  description = "ARM id of that public IP, for DNS alias records that follow it."
+  value       = azurerm_public_ip.ingress.id
+}

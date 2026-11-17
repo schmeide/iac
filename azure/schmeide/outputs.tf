@@ -62,3 +62,13 @@ output "subscription_id" {
   description = "The subscription, schmeide.app's AZURE_SUBSCRIPTION_ID. Not a secret."
   value       = var.subscription_id
 }
+
+output "apps_name_servers" {
+  description = "Name servers of the apps.schmeide.com zone. The owner adds one NS record for host apps at Porkbun per entry (README.md, \"DNS\")."
+  value       = azurerm_dns_zone.apps.name_servers
+}
+
+output "cert_manager_identity_client_id" {
+  description = "Client id of cert-manager's DNS-01 workload identity. Not a secret; passed to Argo by the argocd-bootstrap release."
+  value       = azurerm_user_assigned_identity.cert_manager.client_id
+}

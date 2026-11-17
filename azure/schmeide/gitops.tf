@@ -223,4 +223,17 @@ resource "helm_release" "argocd_bootstrap" {
   chart      = "${path.module}/charts/argocd-bootstrap"
   namespace  = "argocd"
   depends_on = [helm_release.argo_cd]
+
+  # Terraform outputs Argo needs, passed to the root Application's Jsonnet; see the
+  # chart's template. Ids, not secrets.
+  values = [
+    yamlencode({
+      certManager = {
+        clientId       = azurerm_user_assigned_identity.cert_manager.client_id
+        subscriptionId = var.subscription_id
+        resourceGroup  = azurerm_dns_zone.apps.resource_group_name
+        zone           = azurerm_dns_zone.apps.name
+      }
+    }),
+  ]
 }

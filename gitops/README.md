@@ -25,6 +25,8 @@ upstream repository indexes or release lists on 2026-11-16. Renovate keeps them 
 Besides the Applications, `apps/` holds:
 
 - `cluster-issuer.yaml`: a `letsencrypt` ClusterIssuer, HTTP-01 through the `traefik` ingress class.
+- `cluster-issuer-dns.jsonnet` and `apps-wildcard-certificate.yaml`: DNS-01 and the `*.apps.schmeide.com`
+  certificate; see "Apps domain" below.
 - `temporal-secrets.yaml`, `forgejo-secrets.yaml`, `schmeide-app-secrets.yaml`: the namespaces, and ExternalSecrets
   that project secrets from the platform Key Vault through the `schmeide` ClusterSecretStore.
 
@@ -48,7 +50,32 @@ not also apply it as raw manifests:
   Deployment changes. It needs the `schmeide_app` login below.
 
 Sync waves order the first sync: namespaces and the two Applications that bring CRDs (cert-manager, Traefik) at 0,
-the ClusterIssuer and ExternalSecrets at 1, Temporal and Forgejo at 2, the schmeide.app API at 3.
+the ClusterIssuers and ExternalSecrets at 1, Temporal and Forgejo at 2, the schmeide.app API at 3, and the apps
+wildcard Certificate at 4.
+
+## Apps domain
+
+Built apps are served at `<host>.apps.schmeide.com` with one wildcard certificate, so no app needs a certificate or a
+TLS Secret of its own and no app host name reaches Certificate Transparency logs. The zone and its delegation are in
+`README.md`, "DNS".
+
+- `apps/cluster-issuer-dns.jsonnet`: the `letsencrypt-dns` ClusterIssuer, DNS-01 with the `azureDNS` solver on the
+  `apps.schmeide.com` zone. cert-manager authenticates as `id-schmeide-cert-manager` through workload identity:
+  `cert-manager/values.yaml` labels its pod and fixes its service account name, which `azure/schmeide/dns.tf`
+  federates.
+- `apps/apps-wildcard-certificate.yaml`: `*.apps.schmeide.com` and `apps.schmeide.com` into the Secret
+  `traefik/apps-wildcard-tls`.
+- `traefik/values.yaml`: the default `TLSStore` serves that Secret to every TLS request no other certificate matches.
+
+The ClusterIssuer is Jsonnet because it needs the identity's client id and the subscription id, which this repository
+does not commit. `azure/schmeide/gitops.tf` passes them, with the zone and its resource group, to the root
+Application as the Jsonnet top-level argument `certManager` (`charts/argocd-bootstrap`). Without it the file renders
+nothing, so it is safe in a sync that runs before that apply.
+
+The Certificate stays not Ready until the owner adds the `apps` NS records at Porkbun. It is in the last wave, and Argo
+waits for a wave to be healthy only before it starts the next one, so a pending certificate blocks no other resource;
+the root Application shows Progressing or Degraded until it is issued. Check it with
+`kubectl -n traefik get certificate apps-wildcard`.
 
 ## Secrets
 
