@@ -7,8 +7,8 @@
 #
 # Per-project databases are created by the platform at runtime, not here. The server name
 # is global across Azure and was not checked for availability. The FQDN it produces is
-# also written into gitops/schmeide/temporal/values.yaml and forgejo/values.yaml; change
-# all three together.
+# also written into gitops/schmeide/temporal/values.yaml, forgejo/values.yaml and
+# apps/schmeide-app-secrets.yaml; change them all together.
 resource "azurerm_resource_group" "postgres" {
   name     = "schmeide-postgres"
   location = var.location
