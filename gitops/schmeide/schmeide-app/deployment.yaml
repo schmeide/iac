@@ -48,6 +48,9 @@ spec:
             - name: http
               containerPort: 3100
           env:
+            # HTTP only: schmeide-app-worker (worker.yaml) runs the Temporal worker.
+            - name: SCHMEIDE_ROLE
+              value: api
             - name: SCHMEIDE_BUILDS
               value: "off"
             - name: SCHMEIDE_HOST
