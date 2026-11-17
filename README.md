@@ -123,7 +123,19 @@ ephemeral `random_password` resources and sent to Azure through write-only argum
 `value_wo`), so they appear in neither state nor the planfile artifact. Each lands in the platform Key Vault, and
 External Secrets projects it into the cluster. To rotate one, bump its `*_version` and apply.
 
-No workflow reads an Actions secret. The CI identity uses OIDC and has no client secret.
+The CI identity uses OIDC and has no client secret. `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and `AZURE_SUBSCRIPTION_ID`
+are still Actions *secrets*, not variables. None is a credential, but this repository is public, Terraform prints the
+subscription ID in every resource ID and most errors, and GitHub masks secrets in logs where it does not mask
+variables. `AZURE_ENABLED` stays a variable, because a job-level `if:` cannot read secrets.
+
+Masking only rewrites log lines that contain the exact value. It does not cover:
+
+- the job summary and the plan comment on a pull request. `plan.yml` replaces the three IDs in the rendered plan
+  before writing either;
+- the planfile artifact, which holds every resource ID unredacted and can be downloaded by any signed-in GitHub user
+  for its one-day retention;
+- a value that has been transformed (URL-encoded, base64, split across lines), which no longer matches;
+- runs from before the switch, whose logs were deleted, and comments already posted on older pull requests.
 
 ## Bringing the subscription online
 
@@ -155,8 +167,8 @@ skipped because the `AZURE_ENABLED` repository variable is not `true`.
    providers the stack uses with `make bootstrap/providers`. A new subscription has almost none registered, and the
    first apply fails with `MissingSubscriptionRegistration` without this.
 7. **Create the CI identity:** `./bootstrap/github-oidc.bash create`. It prints three commands.
-8. **Set the repository variables** it printed: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and `AZURE_SUBSCRIPTION_ID`.
-   They are variables, not secrets; none is sensitive.
+8. **Set the repository secrets** it printed: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and `AZURE_SUBSCRIPTION_ID`.
+   None is a credential, but secrets are masked in the public Actions logs and variables are not.
 9. **Plan locally** to see the first plan before CI does: `make init`, then `make plan`. Untested: the Helm releases in
    `gitops.tf` point at a cluster that does not exist yet. If the first plan fails on them, land the cluster first in
    one pull request and `gitops.tf` in the next.

@@ -96,7 +96,10 @@ ephemeral resource and send it through a write-only argument (`*_wo` with a `*_w
 `true`. Keep that gate on every job that reaches Azure. `check.yml` needs no Azure credentials; keep it that way.
 
 Authentication is OIDC via `azure/login`. `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and `AZURE_SUBSCRIPTION_ID` are
-repository variables. No workflow reads an Actions secret.
+repository *secrets*, so Actions masks them in this public repo's logs; `AZURE_ENABLED` is a variable because a job's
+`if:` cannot read secrets. Masking covers logs only: anything a workflow writes to a job summary, a comment or an
+artifact must have the IDs redacted first, as `plan.yml` does for the rendered plan. Never `echo` an ID or run
+`az account show` in a workflow.
 
 ## Dependency updates
 

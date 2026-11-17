@@ -6,9 +6,12 @@
 #
 # Authentication is OIDC -- azure/login exchanges a short-lived GitHub token for an Azure
 # one, so there is no client secret anywhere. AZURE_CLIENT_ID, AZURE_TENANT_ID and
-# AZURE_SUBSCRIPTION_ID are repository *variables*, not secrets: none of the three is
-# sensitive, and with OIDC there is no credential to hide. bootstrap/github-oidc.bash
-# creates the app registration and prints the commands that set them.
+# AZURE_SUBSCRIPTION_ID are repository *secrets* anyway. None is a credential, but this repo
+# is public and terraform prints the subscription ID in every resource ID and most errors.
+# Secrets are masked in the logs; variables are not. Masking covers logs only, so the plan
+# text is redacted before it reaches the job summary and the PR comment.
+# bootstrap/github-oidc.bash creates the app registration and prints the commands that set
+# them. AZURE_ENABLED stays a variable: secrets cannot be read in a job-level `if:`.
 #
 # INERT UNTIL THE SUBSCRIPTION EXISTS. Every job here is gated on the AZURE_ENABLED
 # repository variable, so with it unset the run shows the job as skipped rather than
@@ -49,9 +52,9 @@ jobs:
       - name: Login to Azure
         uses: azure/login@v3
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v4
@@ -81,9 +84,20 @@ jobs:
 
       # Rendered once, into a file, because two things consume it: the job summary and the
       # PR comment. Running `make plan/show` twice would be two chances to disagree.
+      #
+      # Neither of those is a log, so secret masking does not reach them. Resource IDs carry
+      # the subscription ID, so the three IDs are replaced before anything reads plan.txt.
       - name: Render plan
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: |
-          make plan/show > plan.txt
+          make plan/show \
+            | sed -e "s/$AZURE_SUBSCRIPTION_ID/<subscription-id>/g" \
+              -e "s/$AZURE_TENANT_ID/<tenant-id>/g" \
+              -e "s/$AZURE_CLIENT_ID/<client-id>/g" \
+            > plan.txt
           echo "PLAN_LINES=$(wc -l < plan.txt)" >> "$GITHUB_ENV"
 
       # A planfile is opaque to a human reviewer. The job summary is the reviewable half.
@@ -175,10 +189,14 @@ jobs:
 
       # Named with the commit SHA so apply.yml can prove it is applying the plan for the
       # commit it is actually running on, rather than whatever plan happened to be latest.
+      #
+      # The planfile holds unredacted resource IDs, and artifacts of a public repo can be
+      # downloaded by any signed-in GitHub user. apply.yml consumes it minutes later in the
+      # same run, so keep it for the shortest retention GitHub allows.
       - name: Upload planfile
         uses: actions/upload-artifact@v7
         with:
           name: planfile-${{ github.sha }}
           path: azure/schmeide/planfile.tfplan
-          retention-days: 5
+          retention-days: 1
           if-no-files-found: error

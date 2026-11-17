@@ -61,8 +61,9 @@ federated credentials, which Bicep cannot create: app registrations are Microsof
 It creates the `github-actions-schmeide-iac` app registration and service principal, three federated credentials
 (`pull_request`, `ref:refs/heads/main`, `environment:production`), Contributor on the subscription, Storage Blob Data
 Contributor on the state account, and Role Based Access Control Administrator on the subscription with a condition
-that limits it to the four roles the Terraform assigns. It finishes by printing the `gh variable set` commands for
-`AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and `AZURE_SUBSCRIPTION_ID`.
+that limits it to the four roles the Terraform assigns. It finishes by printing the `gh secret set` commands for
+`AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and `AZURE_SUBSCRIPTION_ID`. They are secrets so that Actions masks them in the
+logs of this public repository; see "Secrets" in `README.md`.
 
 The cluster module looks this service principal up by name (`github_actions_app_name`), so the name here and there
 must match.
