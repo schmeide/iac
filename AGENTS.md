@@ -90,6 +90,7 @@ ephemeral resource and send it through a write-only argument (`*_wo` with a `*_w
 | `check.yml` | PR to `main`, push to `main`, manual | `make check/format`, `check/lint`, `check/markdown`, `check/bicep`, `check/validate` |
 | `plan.yml` | PR to `main`, `workflow_call` | `make init` + `make plan`; uploads the planfile and posts the plan to the summary and a PR comment |
 | `apply.yml` | push to `main`, manual | calls `plan.yml`, then `make apply-from-planfile` on that planfile |
+| `pr-title.yml` | PR to `main` | Fails a PR title that is not a conventional commit |
 | `codeql.yml` | PR to `main`, push to `main`, weekly, manual | CodeQL on the `actions` language only |
 
 `plan.yml` and `apply.yml` are gated on the `AZURE_ENABLED` repository variable and show as skipped until it is
@@ -111,6 +112,14 @@ if it shrank, run `make lock` on the branch.
 
 State is shared. Apply from `main` through CI, where every change has been reviewed. `make apply-from-source`,
 `make apply-from-planfile` and `make destroy` exist for CI and for recovery.
+
+## Pull requests and commits
+
+- The title of a pull request is a conventional commit, in lowercase imperative mood, with the issue number as the
+  scope: `feat(<issue number>): add the dns zone`. `type` is one of `feat`, `fix`, `docs`, `style`, `refactor`, `perf`,
+  `test`, `build`, `ci`, `chore` or `revert`. The PR title becomes the commit subject when the PR is squash-merged,
+  and the PR title workflow fails any other title. Renovate's `chore(deps/...)` titles already fit.
+- Put the issue number in the PR body (`Closes #N`).
 
 ## Never commit
 
