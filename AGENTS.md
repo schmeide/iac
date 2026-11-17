@@ -89,7 +89,7 @@ ephemeral resource and send it through a write-only argument (`*_wo` with a `*_w
 | --- | --- | --- |
 | `check.yml` | PR to `main`, push to `main`, manual | `make check/format`, `check/lint`, `check/markdown`, `check/bicep`, `check/validate` |
 | `plan.yml` | PR to `main`, `workflow_call` | `make init` + `make plan`; uploads the planfile and posts the plan to the summary and a PR comment |
-| `apply.yml` | push to `main`, manual | calls `plan.yml`, then `make apply-from-planfile` on that planfile |
+| `apply.yml` | push to `main` (not `gitops/**` or Markdown only), manual | calls `plan.yml`, then `make apply-from-planfile` on that planfile |
 | `pr-title.yml` | PR to `main` | Fails a PR title that is not a conventional commit |
 | `codeql.yml` | PR to `main`, push to `main`, weekly, manual | CodeQL on the `actions` language only |
 

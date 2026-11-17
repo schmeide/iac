@@ -13,6 +13,12 @@ on:
   push:
     branches:
       - main
+    # Terraform reads neither. gitops/ is Argo's: schmeide.app's CD commits a new image tag
+    # there on every deploy, and each of those would otherwise run a no-op plan and apply.
+    # A push that also touches a .tf file still runs.
+    paths-ignore:
+      - "gitops/**"
+      - "**.md"
   workflow_dispatch:
 defaults:
   run:

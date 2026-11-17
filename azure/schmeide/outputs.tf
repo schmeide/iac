@@ -19,7 +19,7 @@ output "key_vault_name" {
 }
 
 output "acr_login_server" {
-  description = "Container registry login server. The cluster's kubelet can pull; nothing can push yet."
+  description = "Container registry login server. The cluster's kubelet can pull; schmeide.app's CI can push to schmeide-app."
   value       = module.registry.login_server
 }
 
@@ -46,4 +46,19 @@ output "gitops_identity_client_id" {
 output "ingress_ip_address" {
   description = "Static public IP of Traefik, pip-schmeide-ingress in schmeide-cluster. The A record api.schmeide.app at Porkbun points here."
   value       = module.cluster.ingress_ip_address
+}
+
+output "schmeide_app_push_client_id" {
+  description = "Client id of schmeide.app's CI push identity, its AZURE_CLIENT_ID. Not a secret."
+  value       = azurerm_user_assigned_identity.schmeide_app_push.client_id
+}
+
+output "tenant_id" {
+  description = "Tenant of the subscription, schmeide.app's AZURE_TENANT_ID. Not a secret."
+  value       = var.tenant_id
+}
+
+output "subscription_id" {
+  description = "The subscription, schmeide.app's AZURE_SUBSCRIPTION_ID. Not a secret."
+  value       = var.subscription_id
 }
