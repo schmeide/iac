@@ -215,6 +215,38 @@ then, as the admin, connected to `schmeide_app_template`:
 ALTER SCHEMA public OWNER TO pg_database_owner;
 ```
 
+The worker also refuses to start while PUBLIC may connect to `postgres` or `schmeide`, since every app's role could then
+connect to them too (`PLATFORM_DATABASES` in schmeide/schmeide.app `server/src/services/appDatabases.ts`). These roles
+connect to them, and nothing else in this repository does:
+
+| Database | Role | Who |
+| --- | --- | --- |
+| `postgres` | `schmeide_provisioner` | the worker, `SCHMEIDE_PROVISIONER_URL` (`apps/schmeide-app-secrets.yaml`) |
+| `postgres` | `schmeideadmin` | the `psql-once` pod above, and any admin session; Temporal and Forgejo use this login too |
+| `schmeide` | `schmeide_app` | the API, the worker and the migrate Job, `DATABASE_URL` (`apps/schmeide-app-secrets.yaml`) |
+| `schmeide` | `schmeideadmin` | admin sessions ("The `schmeide_app` login" below) |
+
+Azure's own connections use `azuresu`, a superuser, which privileges do not limit. As the admin, from the `psql-once`
+pod above, look first, in case something else connects that this table misses:
+
+```sql
+SELECT datname, pg_get_userbyid(datdba) AS owner, datacl FROM pg_database WHERE datname IN ('postgres', 'schmeide');
+SELECT DISTINCT datname, usename, application_name FROM pg_stat_activity WHERE datname IN ('postgres', 'schmeide');
+```
+
+Grant any other role that shows up beside its database, then close both in one transaction:
+
+```sql
+BEGIN;
+GRANT CONNECT ON DATABASE postgres TO schmeideadmin, schmeide_provisioner;
+GRANT CONNECT ON DATABASE schmeide TO schmeideadmin, schmeide_app;
+REVOKE CONNECT ON DATABASE postgres, schmeide FROM PUBLIC;
+COMMIT;
+```
+
+In the first query's `datacl`, the entry that starts with `=` is PUBLIC's; it should then have no `c`. The worker
+checks again each time it starts.
+
 ## Apps domain
 
 Built apps are served at `<host>.apps.schmeide.com` with one wildcard certificate, so no app needs a certificate or a
