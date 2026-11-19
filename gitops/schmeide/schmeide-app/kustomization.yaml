@@ -14,7 +14,7 @@ resources:
 images:
   - name: schmeide-app
     newName: schmeide.azurecr.io/schmeide-app
-    newTag: "927c4dd75a1b5630c063d8b38d2a960f0de10548"
+    newTag: "6e2e2dfecc2ff4c0a7e06f4d5b2b0200ea6a2fc8"
 # The worker starts build Jobs from its own image, so SCHMEIDE_BUILD_IMAGE follows the tag above.
 # Replacements run after images:, so this copies the full schmeide.azurecr.io/schmeide-app:<sha>.
 replacements:
