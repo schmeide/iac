@@ -1,0 +1,28 @@
+# ClamAV: scans every upload the schmeide.app API takes, before it is stored
+# (schmeide/schmeide.app docs/mvp.md, "Files"). The API refuses to start on a public URL
+# without it. Plain manifests in clamav/, outside apps/, as for schmeide-app. A wave before
+# the API, so clamd is answering when the API first starts.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: clamav
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/schmeide/iac.git
+    targetRevision: main
+    path: gitops/schmeide/clamav
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: clamav
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

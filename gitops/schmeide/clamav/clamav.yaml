@@ -1,0 +1,133 @@
+# clamd on 3310 for the schmeide.app API (SCHMEIDE_CLAMAV_ADDRESS in
+# schmeide-app/deployment.yaml), which sends each upload with INSTREAM. Customer files go
+# nowhere else; the only egress is freshclam's signature updates.
+#
+# The official image, Alpine, with signatures baked in, so a new pod loads them at once and
+# freshclam only tops them up. 1.5.5 looked up 2026-11-19 on Docker Hub (clamav/clamav).
+# Talos rebuilds the tag daily with fresh signatures. Renovate does not watch this file.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clamav
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: clamav
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: clamav
+    spec:
+      automountServiceAccountToken: false
+      # The image's init starts as root to chown its directories, then clamd and freshclam
+      # drop to the clamav user, so the default capabilities stay.
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: clamav
+          image: clamav/clamav:1.5.5
+          ports:
+            - name: clamd
+              containerPort: 3310
+          # clamdcheck.sh is the image's own health check: PING on 3310, expects PONG, which
+          # clamd answers only once its signatures are loaded.
+          startupProbe:
+            exec:
+              command: ["clamdcheck.sh"]
+            periodSeconds: 10
+            timeoutSeconds: 5
+            # Up to 10 minutes, for a first freshclam download if the baked set is stale.
+            failureThreshold: 60
+          readinessProbe:
+            exec:
+              command: ["clamdcheck.sh"]
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["clamdcheck.sh"]
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
+          # clamd holds the signatures in memory, about 1.2 GiB, and loads a second copy
+          # beside the first while it reloads after an update; hence the 3 GiB limit.
+          resources:
+            requests:
+              cpu: 100m
+              memory: 2Gi
+            limits:
+              cpu: "1"
+              memory: 3Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clamav
+spec:
+  selector:
+    app.kubernetes.io/name: clamav
+  ports:
+    - name: clamd
+      port: 3310
+      targetPort: clamd
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# In: the schmeide.app API only. Out: DNS (freshclam also reads the current versions from a
+# TXT record) and HTTP(S) to the internet for signature updates, never private ranges,
+# instance metadata or the Azure wire server.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: clamav
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: clamav
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: schmeide-app
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: schmeide-app-api
+      ports:
+        - protocol: TCP
+          port: 3310
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 169.254.0.0/16
+              - 168.63.129.16/32
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 80

@@ -112,7 +112,7 @@ container registry, and Let's Encrypt certificates.
 | `dns.tf` | | The `apps.schmeide.com` zone, its wildcard record, and cert-manager's DNS-01 identity |
 
 Argo CD then installs, from `gitops/schmeide/apps`: cert-manager with a Let's Encrypt issuer, Traefik as the ingress
-controller, Temporal, and Forgejo. `gitops/README.md` covers that layer.
+controller, Temporal, Forgejo, and ClamAV. `gitops/README.md` covers that layer.
 
 Each component has its own resource group (`schmeide-network`, `schmeide-cluster`, and so on), created in the root
 file that wires its module, as in autobutler-org/iac.
