@@ -65,6 +65,10 @@ spec:
               value: https://api.schmeide.app
             - name: SCHMEIDE_DATA_DIR
               value: /data
+            # clamd (clamav/clamav.yaml) scans each upload before it is stored. The API
+            # refuses to start on a public SCHMEIDE_PUBLIC_URL without it; the worker never scans.
+            - name: SCHMEIDE_CLAMAV_ADDRESS
+              value: clamav.clamav.svc.cluster.local:3310
             # Plaintext in-cluster; the server has no TLS options. Temporal namespace
             # `default`, which the temporal chart registers (server.config.namespaces).
             - name: TEMPORAL_ADDRESS

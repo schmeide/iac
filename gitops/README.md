@@ -17,6 +17,7 @@ in the `argocd-initial-admin-secret` Secret. There is no public hostname for it.
 | `traefik` | `traefik` | 42.4.0 (Traefik v3.7.18) | `https://traefik.github.io/charts` |
 | `temporal` | `temporal` | 1.8.0 (server 1.32.2) | `https://go.temporal.io/helm-charts` |
 | `forgejo` | `forgejo` | 17.3.2 (Forgejo 15.0) | `oci://code.forgejo.org/forgejo-helm/forgejo` |
+| `clamav` | none: plain manifests in `clamav/` | image `clamav/clamav:1.5.5` | this repo |
 | `schmeide-app` | none: kustomize | image tag in `schmeide-app/kustomization.yaml` | this repo |
 
 Terraform installs `external-secrets` 2.15.0 and `argo-cd` 10.18.0 (Argo CD v3.6.1). All versions were read from the
@@ -53,8 +54,26 @@ not also apply it as raw manifests:
 
 Sync waves order the first sync: namespaces, the two Applications that bring CRDs (cert-manager, Traefik), and the
 worker's admission policy at 0, the ClusterIssuers, ExternalSecrets, and the `schmeide-builds` and worker RBAC objects
-at 1, Temporal and Forgejo at 2, the schmeide.app API at 3, and the apps
+at 1, Temporal, Forgejo and ClamAV at 2, the schmeide.app API at 3, and the apps
 wildcard Certificate at 4.
+
+## ClamAV
+
+The API scans every upload with clamd before it stores it, and refuses to start on a public `SCHMEIDE_PUBLIC_URL`
+without `SCHMEIDE_CLAMAV_ADDRESS` (schmeide/schmeide.app `docs/mvp.md`, "Files"). `apps/clamav.yaml` applies
+`clamav/`, in wave 2 so clamd answers before the API starts:
+
+- Deployment `clamav` in namespace `clamav`: the official `clamav/clamav` image, which runs clamd on 3310 and
+  freshclam for signature updates. It requests 2 GiB and may use 3 GiB, because clamd loads a second copy of the
+  signatures beside the first while it reloads. The image's `clamdcheck.sh` (PING, expects PONG) is the startup,
+  readiness and liveness probe; the startup probe allows ten minutes for a first signature download.
+- Service `clamav`, so the API's address is `clamav.clamav.svc.cluster.local:3310`. Only the API sets it; the worker
+  never scans.
+- NetworkPolicy `default-deny` both ways, and `clamav`: in from the `schmeide-app-api` pods on 3310 only; out to
+  kube-dns and to TCP 80 and 443 on the internet for freshclam, except the private ranges `schmeide-builds` excludes.
+
+The tag is pinned by hand; Renovate watches only the Applications in `apps/`. Talos rebuilds it daily with fresh
+signatures, and freshclam keeps a running pod current.
 
 ## Builds and the worker
 
